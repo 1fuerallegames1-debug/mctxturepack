@@ -31,26 +31,34 @@ if not defined ANGEL_PY (
 echo [1/5] Python: OK
 
 rem ---------- Ollama finden, sonst per winget installieren ----------
-where ollama >nul 2>nul
-if errorlevel 1 (
+call :find_ollama
+if not defined ANGEL_OLLAMA (
   echo [2/5] Ollama wird installiert ...
   where winget >nul 2>nul && winget install -e --id Ollama.Ollama --accept-source-agreements --accept-package-agreements
+  call :find_ollama
 )
-where ollama >nul 2>nul
-if errorlevel 1 (
+if not defined ANGEL_OLLAMA (
   echo.
-  echo Ollama wurde noch nicht gefunden. Bitte von https://ollama.com/download installieren
-  echo und danach installieren.bat erneut starten.
+  echo Ollama wurde installiert, ist in DIESEM Fenster aber noch nicht aktiv.
+  echo Bitte dieses Fenster schliessen und installieren.bat noch einmal starten.
+  echo Falls Ollama fehlt: https://ollama.com/download
   start "" https://ollama.com/download
   pause
   exit /b 1
 )
 echo [2/5] Ollama: OK
-start "" /b ollama serve >nul 2>nul
+start "" /b "%ANGEL_OLLAMA%" serve >nul 2>nul
 
 rem ---------- KI-Modell laden ----------
 echo [3/5] KI-Modell wird geladen (einmalig, mehrere GB, bitte warten) ...
-ollama pull qwen3:8b
+rem dem gerade gestarteten Ollama-Dienst ein paar Sekunden Zeit geben
+timeout /t 5 /nobreak >nul 2>nul
+"%ANGEL_OLLAMA%" pull qwen3:8b
+if errorlevel 1 (
+  echo Server war noch nicht bereit - neuer Versuch fuer das KI-Modell ...
+  timeout /t 8 /nobreak >nul 2>nul
+  "%ANGEL_OLLAMA%" pull qwen3:8b
+)
 
 rem ---------- Sprache + Browser (Fehler hier sind nicht schlimm) ----------
 echo [4/5] Sprache und Browser werden eingerichtet ...
@@ -75,4 +83,18 @@ exit /b 0
 set "ANGEL_PY="
 py -3 --version >nul 2>nul && set "ANGEL_PY=py -3"
 if not defined ANGEL_PY python --version >nul 2>nul && set "ANGEL_PY=python"
+goto :eof
+
+:find_ollama
+rem Ollama ueber PATH suchen - und falls das Fenster den Befehl noch nicht kennt,
+rem direkt an den ueblichen Installationsorten (winget legt es unter LOCALAPPDATA ab).
+set "ANGEL_OLLAMA="
+for /f "delims=" %%I in ('where ollama 2^>nul') do if not defined ANGEL_OLLAMA set "ANGEL_OLLAMA=%%I"
+if not defined ANGEL_OLLAMA for %%P in (
+  "%LOCALAPPDATA%\Programs\Ollama\ollama.exe"
+  "%ProgramFiles%\Ollama\ollama.exe"
+  "%ProgramW6432%\Ollama\ollama.exe"
+  "%LOCALAPPDATA%\Ollama\ollama.exe"
+) do if not defined ANGEL_OLLAMA if exist "%%~P" set "ANGEL_OLLAMA=%%~P"
+if defined ANGEL_OLLAMA for %%I in ("%ANGEL_OLLAMA%") do set "PATH=%%~dpI;%PATH%"
 goto :eof
