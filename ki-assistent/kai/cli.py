@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import sys
 import textwrap
@@ -11,6 +12,7 @@ from . import __version__
 from .agent import Agent
 from .config import save_setting
 from .llm import LLMError, OllamaClient
+from .regeln import as_text as rules_text
 
 HELP = """\
 Befehle:
@@ -21,8 +23,17 @@ Befehle:
   /gedaechtnis        anzeigen, was sich {name} gemerkt hat
   /vergiss <nr>       einen gemerkten Eintrag löschen
   /auto an|aus        Aktionen ohne Nachfrage ausführen (Vorsicht!) / wieder nachfragen
+  /regeln             {name}s drei Grundregeln anzeigen
   /beenden            {name} beenden (oder Strg+C)
 Während {name} arbeitet, bricht Strg+C die aktuelle Aufgabe ab."""
+
+
+_CONTROL = re.compile(r"[\x00-\x08\x0b-\x1f\x7f\x9b]")
+
+
+def safe(text: str) -> str:
+    """Steuerzeichen sichtbar machen, damit Ausgaben das Terminal nicht manipulieren können."""
+    return _CONTROL.sub(lambda m: f"\\x{ord(m.group()):02x}", text or "")
 
 
 class Style:
@@ -50,8 +61,8 @@ def _enable_ansi() -> bool:
         handle = kernel.GetStdHandle(-11)
         mode = ctypes.c_uint32()
         if kernel.GetConsoleMode(handle, ctypes.byref(mode)):
-            kernel.SetConsoleMode(handle, mode.value | 0x0004)  # ENABLE_VIRTUAL_TERMINAL_PROCESSING
-            return True
+            # ENABLE_VIRTUAL_TERMINAL_PROCESSING – schlägt in der alten Konsole fehl
+            return bool(kernel.SetConsoleMode(handle, mode.value | 0x0004))
     except Exception:
         pass
     return False
@@ -73,12 +84,8 @@ class TerminalChat:
     def ask(self, prompt: str) -> str:
         return input(prompt)
 
-    def _indent(self, text: str, prefix: str = "  │ ", max_lines: int = 40) -> str:
-        lines = text.splitlines() or [""]
-        shown = lines[:max_lines]
-        if len(lines) > max_lines:
-            shown.append(f"... ({len(lines) - max_lines} weitere Zeilen)")
-        return "\n".join(prefix + line for line in shown)
+    def _indent(self, text: str, prefix: str = "  │ ") -> str:
+        return "\n".join(prefix + line for line in (text.splitlines() or [""]))
 
     # -------------------------------------------------------------- Start
 
@@ -98,9 +105,13 @@ class TerminalChat:
                 return False
         elif info.get("warning"):
             self.out(f"{s.yellow}{info['warning']}{s.reset}")
+        if agent.context_warning():
+            self.out(f"{s.yellow}{agent.context_warning()}{s.reset}")
         mode = (f"{s.red}automatisch (ohne Nachfrage){s.reset}" if agent.auto_mode
                 else f"{s.green}mit Nachfrage{s.reset}")
         self.out(f"Modell: {s.bold}{agent.client.model}{s.reset}  |  Aktionen: {mode}  |  /hilfe für Befehle")
+        self.out(f"{s.dim}Grundregeln aktiv: 1. Dein Wort ist Gesetz  2. Kein körperlicher Schaden für Menschen  "
+                 f"3. Unveränderlich  (/regeln){s.reset}")
         if agent.auto_mode:
             self.out(f"{s.red}Achtung: Kai führt Befehle ohne Rückfrage aus. Mit /auto aus wieder einschalten.{s.reset}")
         return True
@@ -229,6 +240,9 @@ class TerminalChat:
                 self.out(f"Eintrag {arg} gelöscht.")
             else:
                 self.out("Nutzung: /vergiss <nr>  (Nummern siehe /gedaechtnis)")
+        elif cmd in ("regeln", "rules"):
+            self.out(f"{s.bold}{self.name}s Grundregeln (fest eingebaut, nicht änderbar):{s.reset}")
+            self.out(rules_text(self.name))
         elif cmd == "auto":
             if arg.lower() in ("an", "on", "ein"):
                 agent.auto_mode = True
@@ -284,12 +298,12 @@ class TerminalChat:
                         self.out(s.reset)
                         state["thinking_shown"] = False
                     open_text()
-                    self.out(ev["text"], end="")
+                    self.out(safe(ev["text"]).replace("\\x0a", "\n"), end="")
                 elif t == "assistant":
                     close_text()
                 elif t == "tool_start":
                     close_text()
-                    summary = ev["summary"].splitlines()[0] if ev["summary"] else ""
+                    summary = safe(ev["summary"].splitlines()[0]) if ev["summary"] else ""
                     self.out(f"{s.magenta}  ⚙ {ev['name']}{s.reset} {s.dim}{summary[:self.width - 10]}{s.reset}")
                 elif t == "tool_result":
                     self._show_result(ev)
@@ -317,7 +331,7 @@ class TerminalChat:
             return
         color = s.green if status == "ok" else s.red
         mark = "✓" if status == "ok" else "✗"
-        lines = (ev["result"] or "").splitlines()
+        lines = safe(ev["result"] or "").splitlines()
         preview = lines[:4]
         more = f" … (+{len(lines) - 4} Zeilen)" if len(lines) > 4 else ""
         for i, line in enumerate(preview):
@@ -331,12 +345,17 @@ class TerminalChat:
             before()
             s = self.s
             self.out(f"\n  {s.yellow}┌ {self.name} möchte Folgendes tun:{s.reset}")
+            # Immer den VOLLSTÄNDIGEN Text zeigen – nichts darf unsichtbar ausgeführt werden
             body = "\n".join(textwrap.fill(line, self.width - 6, replace_whitespace=False) if len(line) > self.width - 6
-                             else line for line in req["summary"].splitlines())
+                             else line for line in safe(req["summary"]).splitlines())
             self.out(self._indent(body, prefix=f"  {s.yellow}│{s.reset} "))
-            if req.get("dangerous"):
-                self.out(f"  {s.yellow}│{s.reset} {s.red}{s.bold}ACHTUNG: Das kann Daten löschen oder das System verändern!{s.reset}")
+            label = req.get("always_label")
+            if req.get("warning"):
+                self.out(f"  {s.yellow}│{s.reset} {s.red}{s.bold}{req['warning']}{s.reset}")
+            if label is None:
                 options = "[j] ja  [n] nein"
+            elif label:
+                options = f"[j] ja  [n] nein  [i] immer für {label} (diese Sitzung)"
             else:
                 options = "[j] ja  [n] nein  [i] immer erlauben (für diese Sitzung)"
             while True:
@@ -348,7 +367,7 @@ class TerminalChat:
                     return "yes"
                 if answer in ("n", "nein", "no", ""):
                     return "no"
-                if answer in ("i", "immer", "a", "always") and not req.get("dangerous"):
+                if answer in ("i", "immer", "a", "always") and label is not None:
                     return "always"
         return approve
 

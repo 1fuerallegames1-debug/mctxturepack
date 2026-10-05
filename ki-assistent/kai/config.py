@@ -13,9 +13,10 @@ PROJECT_DIR = Path(__file__).resolve().parent.parent
 
 DEFAULTS = {
     # Wie heißt der Assistent und wie heißt du?
-    "name": "Kai",
+    "name": "Angel",
     "dein_name": "",
-    "sprache": "Deutsch",
+    # "Deutsch und Englisch" = antwortet in der Sprache, in der du schreibst
+    "sprache": "Deutsch und Englisch",
     # Woher kommt das KI-Modell? "ollama" (empfohlen) oder "openai"
     # (= jeder OpenAI-kompatible lokale Server, z. B. LM Studio oder llama.cpp)
     "anbieter": "ollama",
@@ -42,6 +43,8 @@ DEFAULTS = {
     # Standard-Ordner für Befehle ("" = dein Benutzerordner)
     "arbeitsordner": "",
     "websuche": {"anbieter": "duckduckgo", "searxng_url": ""},
+    # true = Browser-Oberfläche auch vom Handy im selben WLAN erreichbar (siehe README)
+    "handy_zugriff": False,
     "web_host": "127.0.0.1",
     "web_port": 8765,
     "browser_oeffnen": True,
@@ -76,12 +79,20 @@ def load_config(path: Path | None = None) -> dict:
         shutil.copyfile(EXAMPLE_FILE, path)
     user = {}
     if path.exists():
+        raw = path.read_bytes()
         try:
-            with open(path, encoding="utf-8-sig") as f:
-                user = json.load(f)
+            text = raw.decode("utf-8-sig")
+        except UnicodeDecodeError:
+            text = raw.decode("cp1252", "replace")  # im Editor als "ANSI" gespeichert
+        try:
+            user = json.loads(text)
         except json.JSONDecodeError as e:
+            hint = ""
+            if "escape" in e.msg.lower():
+                hint = ("\nTipp: In Pfaden jeden \\ doppelt schreiben (\"D:\\\\Server\") "
+                        "oder / verwenden (\"D:/Server\").")
             raise ConfigError(
-                f"Die Datei {path.name} enthält einen Fehler (Zeile {e.lineno}, Spalte {e.colno}): {e.msg}"
+                f"Die Datei {path.name} enthält einen Fehler (Zeile {e.lineno}, Spalte {e.colno}): {e.msg}{hint}"
             ) from e
         if not isinstance(user, dict):
             raise ConfigError(f"{path.name} muss ein JSON-Objekt {{ ... }} enthalten.")

@@ -47,8 +47,25 @@ def _read_docx(path: Path) -> str:
     return text
 
 
+def _looks_like_utf16(raw: bytes) -> str | None:
+    if raw[:2] in (b"\xff\xfe", b"\xfe\xff"):
+        return "utf-16"
+    sample = raw[:1024]
+    if len(sample) >= 16:
+        odd_nuls = sample[1::2].count(0) / (len(sample) // 2)
+        even_nuls = sample[0::2].count(0) / ((len(sample) + 1) // 2)
+        if odd_nuls > 0.9 and even_nuls < 0.1:
+            return "utf-16-le"
+        if even_nuls > 0.9 and odd_nuls < 0.1:
+            return "utf-16-be"
+    return None
+
+
 def _read_text(path: Path) -> str:
     raw = path.read_bytes()
+    utf16 = _looks_like_utf16(raw)  # z. B. Ausgabe von "> datei.txt" in Windows PowerShell 5.1
+    if utf16:
+        return raw.decode(utf16, "replace")
     if b"\x00" in raw[:8192]:
         raise ToolError(
             f"{path.name} ist keine Textdatei (Binärdatei, {_human_size(len(raw))}). "
@@ -95,14 +112,37 @@ def read_file(ctx, path: str, start_line: int = 1, max_lines: int = 400):
     return header + "\n" + truncate(body, int(ctx.cfg.get("max_ausgabe_zeichen", 8000)) * 2)
 
 
+SCRIPT_SUFFIXES = {".ps1", ".psm1", ".bat", ".cmd", ".py", ".pyw", ".sh", ".vbs", ".js", ".jse", ".wsf",
+                   ".reg", ".lnk", ".url", ".hta", ".command"}
+
+
 def _write_summary(args) -> str:
     content = args.get("content") or ""
     lines = content.splitlines()
-    preview = "\n".join(lines[:20])
-    if len(lines) > 20:
-        preview += f"\n... ({len(lines) - 20} weitere Zeilen)"
+    # Skripte komplett zeigen (sie werden später evtl. ausgeführt), sonst eine Vorschau
+    limit = 10_000 if Path(str(args.get("path", ""))).suffix.lower() in SCRIPT_SUFFIXES else 20
+    preview = "\n".join(lines[:limit])
+    if len(lines) > limit:
+        preview += f"\n... ({len(lines) - limit} weitere Zeilen)"
     mode = "anhängen an" if args.get("append") else "schreiben nach"
     return f"Datei {mode}: {args.get('path', '')}\n--- Inhalt ---\n{preview}"
+
+
+def _file_encoding(p: Path, content: str, append: bool) -> tuple[str, str]:
+    """Passende Kodierung je Dateityp, damit Windows-Programme Umlaute richtig lesen."""
+    suffix = p.suffix.lower()
+    adding_to_existing = append and p.exists() and p.stat().st_size > 0
+    if suffix in (".ps1", ".psm1", ".psd1", ".csv"):
+        # Windows PowerShell 5.1 und Excel erkennen UTF-8 nur mit BOM
+        return ("utf-8" if adding_to_existing else "utf-8-sig"), content
+    if suffix in (".bat", ".cmd") and os.name == "nt":
+        content = content.replace("\r\n", "\n").replace("\n", "\r\n")  # cmd braucht CRLF
+        try:
+            import ctypes
+            return f"cp{ctypes.windll.kernel32.GetOEMCP()}", content  # cmd liest die OEM-Codepage
+        except Exception:
+            return "cp850", content
+    return "utf-8", content
 
 
 @tool(
@@ -117,6 +157,7 @@ def _write_summary(args) -> str:
     required=["path", "content"],
     confirm=True,
     summary=_write_summary,
+    scope=lambda a: (str(a.get("path", "")).strip().lower(), f"die Datei {a.get('path', '')}"),
 )
 def write_file(ctx, path: str, content: str, append: bool = False):
     p = ctx.resolve(path)
@@ -130,7 +171,8 @@ def write_file(ctx, path: str, content: str, append: bool = False):
         target = backup_dir / f"{_dt.datetime.now():%Y%m%d_%H%M%S}_{p.name}"
         shutil.copy2(p, target)
         backup = f" (alte Version gesichert unter {target})"
-    with open(p, "a" if append else "w", encoding="utf-8", newline="") as f:
+    encoding, content = _file_encoding(p, content, append)
+    with open(p, "a" if append else "w", encoding=encoding, errors="replace", newline="") as f:
         f.write(content)
     return f"{'Angehängt an' if append else 'Gespeichert:'} {p} ({len(content)} Zeichen){backup}"
 
@@ -199,6 +241,7 @@ def find_files(ctx, pattern: str, directory: str = "", max_results: int = 50):
         if ctx.cancel_event.is_set():
             break
         at_root = Path(dirpath).parent == Path(dirpath)
+        all_dirs = list(dirnames)  # Treffer auch bei Ordnern, in die nicht hineingesucht wird
         dirnames[:] = sorted(
             (d for d in dirnames
              if d.lower() not in ALWAYS_SKIP
@@ -206,10 +249,10 @@ def find_files(ctx, pattern: str, directory: str = "", max_results: int = 50):
              and (want_hidden or not d.startswith("."))),
             key=lambda d: (d.lower() in SEARCH_LAST, d.lower()),
         )
-        for name in dirnames + filenames:
-            if fnmatch.fnmatch(name.lower(), pat):
+        for name, is_dir in [(d, True) for d in all_dirs] + [(f, False) for f in filenames]:
+            if fnmatch.fnmatch(name.lower(), pat) or (is_dir and fnmatch.fnmatch(name.lower().lstrip("."), pat)):
                 full = Path(dirpath) / name
-                results.append(str(full) + ("/" if name in dirnames else ""))
+                results.append(str(full) + (os.sep if is_dir else ""))
                 if len(results) >= limit:
                     break
         scanned += 1

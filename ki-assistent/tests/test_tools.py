@@ -58,6 +58,30 @@ class FileToolsTest(ToolTestBase):
         files.write_file(self.ctx, "sub/neu.txt", "drei", append=True)
         self.assertEqual((self.work / "sub" / "neu.txt").read_text(encoding="utf-8"), "zweidrei")
 
+    def test_utf16_files(self):
+        (self.work / "ps.txt").write_bytes("Größe\r\nZeile 2".encode("utf-16"))  # mit BOM
+        self.assertIn("Größe", files.read_file(self.ctx, "ps.txt"))
+        (self.work / "le.txt").write_bytes(("Hallo Welt " * 20).encode("utf-16-le"))  # ohne BOM
+        self.assertIn("Hallo Welt", files.read_file(self.ctx, "le.txt"))
+
+    def test_write_file_encodings(self):
+        files.write_file(self.ctx, "skript.ps1", "Write-Host 'Grüße – fertig'")
+        self.assertTrue((self.work / "skript.ps1").read_bytes().startswith(b"\xef\xbb\xbf"))
+        files.write_file(self.ctx, "liste.csv", "Äpfel;2\n")
+        files.write_file(self.ctx, "liste.csv", "Birnen;3\n", append=True)
+        raw = (self.work / "liste.csv").read_bytes()
+        self.assertEqual(raw.count(b"\xef\xbb\xbf"), 1)
+        self.assertEqual(raw.decode("utf-8-sig"), "Äpfel;2\nBirnen;3\n")
+        files.write_file(self.ctx, "normal.txt", "ü")
+        self.assertEqual((self.work / "normal.txt").read_bytes(), "ü".encode("utf-8"))
+
+    def test_find_matches_hidden_and_skipped_folders_by_name(self):
+        (self.work / "AppData" / "Roaming" / ".minecraft" / "saves").mkdir(parents=True)
+        (self.work / "projekt" / "node_modules").mkdir(parents=True)
+        found = files.find_files(self.ctx, "minecraft", directory=str(self.work))
+        self.assertIn(".minecraft", found)
+        self.assertIn("node_modules", files.find_files(self.ctx, "node_modules", directory=str(self.work)))
+
     def test_list_and_find(self):
         (self.work / "Urlaub").mkdir()
         (self.work / "Urlaub" / "Strand.JPG").write_text("x")
@@ -108,6 +132,19 @@ class CommandToolsTest(ToolTestBase):
         self.assertLess(time.monotonic() - start, 10)
         self.assertIn("abgebrochen", out)
 
+    def test_program_that_keeps_running_does_not_block(self):
+        start = time.monotonic()
+        out = system.run_command(self.ctx, "echo vorher; sleep 30 & echo nachher")
+        self.assertLess(time.monotonic() - start, 8)
+        self.assertIn("nachher", out)
+        self.assertIn("läuft weiter", out)
+        self.assertIn("Exit-Code: 0", out)
+
+    def test_ansi_codes_are_removed(self):
+        out = system.run_command(self.ctx, "printf '\\033[31mrot\\033[0m'")
+        self.assertIn("rot", out)
+        self.assertNotIn("\x1b", out)
+
     def test_run_python(self):
         out = system.run_python(self.ctx, "print(6*7)\nprint('Ä')")
         self.assertIn("42", out)
@@ -124,16 +161,22 @@ class SafetyTest(ToolTestBase):
     def test_dangerous_patterns(self):
         dangerous = ["rm -rf /", "rm -fr ~/x", "Remove-Item C:\\Daten -Recurse -Force", "format C:",
                      "rd /s /q C:\\x", "del /s *.*", "shutdown /s /t 0", "Stop-Computer", "diskpart",
-                     "reg delete HKLM\\x", "Format-Volume -DriveLetter D"]
-        harmless = ["ls -la", "Get-ChildItem", "echo format", "git status", "Remove-Item a.txt", "dir"]
+                     "reg delete HKLM\\x", "Format-Volume -DriveLetter D", "rm -r -fo C:\\Users\\Max\\alt",
+                     'rmdir "$HOME\\Documents" -Recurse', "Remove-Item X -r -Force", "del D:\\Server -Recurse",
+                     "rm -r -f ~/x", "rm -R ordner", "rm --recursive x", "vssadmin delete shadows /all /quiet",
+                     "Clear-RecycleBin -Force", "Set-MpPreference -DisableRealtimeMonitoring $true"]
+        harmless = ["ls -la", "Get-ChildItem", "echo format", "git status", "Remove-Item a.txt", "dir",
+                    "rm datei.txt", "Get-ChildItem -Recurse", "del alt.log"]
         for cmd in dangerous:
             self.assertEqual(system._command_confirm(self.ctx, {"command": cmd}), "always", cmd)
         for cmd in harmless:
             self.assertIs(system._command_confirm(self.ctx, {"command": cmd}), True, cmd)
 
     def test_open_item_confirmation(self):
-        self.ctx.remember_urls("https://example.org")
+        self.ctx.remember_urls("https://example.org", from_user=True)
+        self.ctx.remember_urls("https://from-search.example")
         self.assertFalse(system._open_confirm(self.ctx, {"target": "https://example.org"}))
+        self.assertTrue(system._open_confirm(self.ctx, {"target": "https://from-search.example"}))
         self.assertTrue(system._open_confirm(self.ctx, {"target": "https://evil.example/?x=1"}))
         self.assertTrue(system._open_confirm(self.ctx, {"target": "C:\\Downloads\\setup.exe"}))
 
@@ -170,6 +213,24 @@ class RegistryTest(ToolTestBase):
         self.assertTrue(out.endswith("B" * 20))
         self.assertIn("ausgelassen", out)
         self.assertEqual(truncate("kurz", 50), "kurz")
+
+
+class MemoryRobustnessTest(ToolTestBase):
+    def test_broken_file_is_kept_aside(self):
+        path = self.tmp / "daten" / "kaputt.json"
+        path.write_text("[{'text': kaputt", encoding="utf-8")
+        mem = Memory(path)
+        self.assertEqual(mem.facts, [])
+        self.assertIn("verschoben", mem.warning)
+        self.assertEqual(len(list(path.parent.glob("gedaechtnis.defekt-*.json"))), 1)
+
+    def test_bom_and_missing_ids(self):
+        path = self.tmp / "daten" / "bom.json"
+        path.write_text(json.dumps([{"text": "Ich spiele Minecraft"}, {"id": 1, "text": "Hund Bello"},
+                                    {"id": "x", "text": "Katze"}, "müll", {"text": ""}]), encoding="utf-8-sig")
+        mem = Memory(path)
+        self.assertEqual(sorted(f["id"] for f in mem.facts), [1, 2, 3])
+        self.assertIn("Minecraft", mem.prompt_text())
 
 
 class MemoryTest(ToolTestBase):
@@ -229,6 +290,13 @@ class WebToolsTest(ToolTestBase):
         self.assertEqual(results[1]["snippet"], "Text aus der Lite-Version")
         self.assertEqual(len(results), 2)  # Werbung entfernt
 
+    def test_html_in_form_and_without_head_end(self):
+        page = "<html><head><title>Amt</title><body><form id=f1><h1>Öffnungszeiten</h1><p>Mo 8-12</p></form></body>"
+        title, text = web.html_to_text(page)
+        self.assertEqual(title, "Amt")
+        self.assertIn("Öffnungszeiten", text)
+        self.assertIn("Mo 8-12", text)
+
     def test_html_to_text(self):
         title, text = web.html_to_text("<title>T</title><body><p>a</p><script>x()</script><p>b &amp; c</p></body>")
         self.assertEqual(title, "T")
@@ -278,6 +346,15 @@ class ConfigTest(TempDirTest):
         path.write_text(json.dumps({"name": "Jarvis", "modell": "a"}), encoding="utf-8")
         save_setting("modell", "b", path)
         self.assertEqual(json.loads(path.read_text(encoding="utf-8")), {"name": "Jarvis", "modell": "b"})
+
+    def test_ansi_config_and_path_hint(self):
+        path = self.tmp / "config.json"
+        path.write_bytes('{"dein_name": "Jürgen"}'.encode("cp1252"))
+        self.assertEqual(load_config(path)["dein_name"], "Jürgen")
+        path.write_text('{"arbeitsordner": "D:\\Server"}', encoding="utf-8")  # einfacher Backslash = JSON-Fehler
+        with self.assertRaises(ConfigError) as ctx:
+            load_config(path)
+        self.assertIn("doppelt", str(ctx.exception))
 
     def test_example_config_is_valid(self):
         example = Path(__file__).resolve().parent.parent / "config.beispiel.json"

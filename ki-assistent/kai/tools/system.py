@@ -11,6 +11,7 @@ import signal
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import webbrowser
 from pathlib import Path
@@ -22,14 +23,35 @@ IS_MAC = sys.platform == "darwin"
 
 WOCHENTAGE = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"]
 
-# Befehle, die selbst im Modus "automatisch" immer nachfragen
+# Bekannte gefährliche Befehle: fragen selbst im Modus "automatisch" immer nach.
+# (Eine Liste bekannter Muster – keine Garantie, deshalb ist "nachfragen" der empfohlene Modus.)
 DANGEROUS = re.compile(
-    r"(\brm\s+-[a-z]*r[a-z]*f|\brm\s+-[a-z]*f[a-z]*r|\bformat(\.com)?\s+[a-z]:|\bmkfs|\bdd\s+if=|"
-    r"\bdiskpart\b|\bshutdown\b|\bRemove-Item\b.*-Recurse|\brd\s+/s|\brmdir\s+/s|\bdel\s+/[sfq]|"
-    r"\bbcdedit\b|\breg\s+delete\b|\bcipher\s+/w|\bStop-Computer\b|\bRestart-Computer\b|"
-    r"\bClear-Disk\b|\bFormat-Volume\b|\bInitialize-Disk\b|:\(\)\s*\{)",
+    r"(\b(Remove-Item|rm|ri|del|erase|rd|rmdir)\b[^\n|;&]*?(\s-r(e(c(u(r(se?)?)?)?)?)?\b|\s/s\b)"  # rekursiv löschen
+    r"|\brm\b[^\n|;&]*?\s-(-recursive\b|[a-z]*r)"                                       # bash: rm -r, -rf, -R
+    r"|\bdel\s+/[sfq]|\bformat(\.com)?\s+[a-z]:|\bmkfs|\bdd\s+if=|\bdiskpart\b|\bshutdown\b"
+    r"|\bbcdedit\b|\breg\s+delete\b|\bcipher\s+/w|\bStop-Computer\b|\bRestart-Computer\b"
+    r"|\bClear-Disk\b|\bFormat-Volume\b|\bInitialize-Disk\b|\bvssadmin\s+delete|\bwbadmin\s+delete"
+    r"|\bClear-RecycleBin\b|\bSet-MpPreference\b[^\n]*-Disable|:\(\)\s*\{)",
     re.I,
 )
+# Python-Code, der Dateien löscht oder andere Programme startet: immer nachfragen
+PY_DANGEROUS = re.compile(
+    r"\b(shutil\.rmtree|os\.(remove|unlink|rmdir|removedirs|system|popen|exec\w*|spawn\w*)|subprocess|"
+    r"send2trash|ctypes|winreg)\b|\.(unlink|rmdir)\(",
+)
+ANSI_ESCAPE = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]")
+
+
+def os_name() -> str:
+    """Betriebssystem-Name – erkennt Windows 11 auch mit älteren Python-Versionen."""
+    system, release = platform.system(), platform.release()
+    if IS_WINDOWS and release == "10":
+        try:
+            if int(platform.version().split(".")[2]) >= 22000:
+                release = "11"
+        except (IndexError, ValueError):
+            pass
+    return f"{system} {release}"
 
 
 def shell_name() -> str:
@@ -95,8 +117,9 @@ def _kill_tree(proc: subprocess.Popen):
             pass
 
 
-def _run_process(args: list[str], cwd: Path, timeout: float, cancel_event=None, env=None) -> tuple[int | None, str, str, bool]:
-    """Startet einen Prozess, wartet (mit Zeitlimit) und liefert (exitcode, stdout, stderr, timed_out)."""
+def _run_process(args: list[str], cwd: Path, timeout: float, cancel_event=None, env=None) -> dict:
+    """Startet einen Prozess und wartet (mit Zeitlimit). Die Ausgabe wird in eigenen Threads gelesen,
+    damit ein gestartetes Programm, das die Ausgabe-Leitung offen hält (z. B. Notepad), nicht blockiert."""
     kwargs = {}
     if IS_WINDOWS:
         kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
@@ -104,33 +127,68 @@ def _run_process(args: list[str], cwd: Path, timeout: float, cancel_event=None, 
         kwargs["start_new_session"] = True
     proc = subprocess.Popen(args, cwd=str(cwd), stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                             stderr=subprocess.PIPE, env=env, **kwargs)
-    deadline = time.monotonic() + timeout
-    timed_out = False
-    while True:
+    out_chunks: list[bytes] = []
+    err_chunks: list[bytes] = []
+
+    def reader(stream, sink):
         try:
-            out, err = proc.communicate(timeout=0.5)
-            break
-        except subprocess.TimeoutExpired:
-            cancelled = cancel_event is not None and cancel_event.is_set()
-            if cancelled or time.monotonic() > deadline:
-                timed_out = not cancelled
-                _kill_tree(proc)
-                try:
-                    out, err = proc.communicate(timeout=5)
-                except subprocess.TimeoutExpired:
-                    out, err = b"", b""
-                if cancelled:
-                    err = (err or b"") + "\n[vom Benutzer abgebrochen]".encode()
+            while True:
+                chunk = stream.read1(65536) if hasattr(stream, "read1") else stream.read(65536)
+                if not chunk:
+                    break
+                sink.append(chunk)
+        except (OSError, ValueError):
+            pass
+
+    threads = [threading.Thread(target=reader, args=(proc.stdout, out_chunks), daemon=True),
+               threading.Thread(target=reader, args=(proc.stderr, err_chunks), daemon=True)]
+    for t in threads:
+        t.start()
+    deadline = time.monotonic() + timeout
+    timed_out = cancelled = False
+    try:
+        while proc.poll() is None:
+            if cancel_event is not None and cancel_event.is_set():
+                cancelled = True
                 break
-    return proc.returncode, _decode(out), _decode(err), timed_out
+            if time.monotonic() > deadline:
+                timed_out = True
+                break
+            time.sleep(0.1)
+        if cancelled or timed_out:
+            _kill_tree(proc)
+            try:
+                proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                pass
+        for t in threads:
+            t.join(timeout=2)
+    except BaseException:
+        _kill_tree(proc)  # z. B. Strg+C: Prozess nicht verwaist weiterlaufen lassen
+        raise
+    return {
+        "code": proc.returncode,
+        "out": _decode(b"".join(out_chunks)),
+        "err": _decode(b"".join(err_chunks)),
+        "timed_out": timed_out,
+        "cancelled": cancelled,
+        # Shell ist fertig, aber ein von ihr gestartetes Programm hält die Ausgabe noch offen
+        "lingering": not (timed_out or cancelled) and any(t.is_alive() for t in threads),
+    }
 
 
-def _format_result(code, out: str, err: str, timed_out: bool, timeout: float, limit: int) -> str:
+def _format_result(res: dict, timeout: float, limit: int) -> str:
+    out = ANSI_ESCAPE.sub("", res["out"])
+    err = ANSI_ESCAPE.sub("", res["err"])
     parts = []
-    if timed_out:
+    if res["timed_out"]:
         parts.append(f"[Zeitlimit von {int(timeout)} s erreicht – Prozess wurde beendet. "
                      "Für dauerhaft laufende Programme background=true verwenden.]")
-    parts.append(f"Exit-Code: {code}")
+    if res["cancelled"]:
+        parts.append("[Vom Benutzer abgebrochen – Prozess wurde beendet.]")
+    if res.get("lingering"):
+        parts.append("[Ein gestartetes Programm läuft weiter; seine weitere Ausgabe wird nicht angezeigt.]")
+    parts.append(f"Exit-Code: {res['code'] if res['code'] is not None else '?'}")
     if out.strip():
         parts.append("Ausgabe:\n" + out.rstrip())
     if err.strip():
@@ -142,7 +200,7 @@ def _format_result(code, out: str, err: str, timed_out: bool, timeout: float, li
 
 def _command_confirm(ctx, args):
     # "always" = auch im Modus "automatisch" nachfragen
-    return "always" if DANGEROUS.search(args.get("command") or "") else True
+    return "always" if DANGEROUS.search(str(args.get("command") or "")) else True
 
 
 def _cmd_summary(args) -> str:
@@ -171,6 +229,8 @@ def _cmd_summary(args) -> str:
     required=["command"],
     confirm=_command_confirm,
     summary=_cmd_summary,
+    scope=lambda a: (" ".join(str(a.get("command", "")).split()) + f"|{a.get('working_directory', '')}",
+                     "genau diesen Befehl"),
 )
 def run_command(ctx, command: str, working_directory: str = "", timeout: int = 0, background: bool = False):
     cwd = ctx.resolve(working_directory) if working_directory else ctx.workdir
@@ -186,10 +246,16 @@ def run_command(ctx, command: str, working_directory: str = "", timeout: int = 0
         tmp_dir.mkdir(parents=True, exist_ok=True)
         fd, script_file = tempfile.mkstemp(suffix=".ps1", dir=str(tmp_dir))
         os.close(fd)
-        prelude = ("$ProgressPreference = 'SilentlyContinue'\n"
-                   "try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}\n"
-                   "$OutputEncoding = [System.Text.Encoding]::UTF8\n")
-        Path(script_file).write_text(prelude + command + "\n", encoding="utf-8-sig")
+        # Vorspann in einer Zeile (UTF-8-Ausgabe, keine Fortschrittsbalken, Fehlerzähler zurücksetzen).
+        # Im Hintergrund-Modus löscht sich das Skript gleich selbst, PowerShell hat es dann schon gelesen.
+        prelude = ("$ProgressPreference='SilentlyContinue'; "
+                   "try { [Console]::OutputEncoding=[System.Text.Encoding]::UTF8 } catch {}; "
+                   "$OutputEncoding=[System.Text.Encoding]::UTF8; "
+                   + ("Remove-Item -LiteralPath $PSCommandPath -ErrorAction SilentlyContinue; " if background else "")
+                   + "$Error.Clear(); $global:LASTEXITCODE=0\n")
+        # Nachspann: PowerShell meldet sonst auch bei Fehlern Exit-Code 0
+        epilogue = "\nif ($LASTEXITCODE) { exit $LASTEXITCODE } elseif ($Error.Count) { exit 1 }\n"
+        Path(script_file).write_text(prelude + command + epilogue, encoding="utf-8-sig")
         args = [_powershell_exe(), "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
                 "-File", script_file]
     else:
@@ -198,10 +264,10 @@ def run_command(ctx, command: str, working_directory: str = "", timeout: int = 0
     try:
         if background:
             return _start_background(ctx, args, cwd, command)
-        code, out, err, timed_out = _run_process(args, cwd, timeout, ctx.cancel_event)
+        res = _run_process(args, cwd, timeout, ctx.cancel_event)
         if IS_WINDOWS:
-            err = _clean_clixml(err)
-        return _format_result(code, out, err, timed_out, timeout, limit)
+            res["err"] = _clean_clixml(res["err"])
+        return _format_result(res, timeout, limit)
     except FileNotFoundError as e:
         raise ToolError(f"Shell nicht gefunden: {e}") from None
     finally:
@@ -228,11 +294,13 @@ def _start_background(ctx, args, cwd: Path, command: str) -> str:
     status = "läuft" if proc.poll() is None else f"bereits beendet (Exit-Code {proc.returncode})"
     preview = ""
     try:
-        preview = _decode(log_file.read_bytes()[-2000:])
+        preview = ANSI_ESCAPE.sub("", _decode(log_file.read_bytes()[-2000:]))
     except OSError:
         pass
+    stop = (f"taskkill /T /F /PID {proc.pid}" if IS_WINDOWS else f"kill -- -{proc.pid}")
     return (f"Im Hintergrund gestartet (PID {proc.pid}, Status: {status}).\n"
             f"Ausgabe wird geschrieben nach: {log_file}\n"
+            f"Zum Beenden (inklusive aller gestarteten Unterprogramme): {stop}\n"
             + (f"Bisherige Ausgabe:\n{preview}" if preview.strip() else ""))
 
 
@@ -246,8 +314,9 @@ def _start_background(ctx, args, cwd: Path, command: str) -> str:
         "timeout": {"type": "integer", "description": "Optional time limit in seconds (default 120)."},
     },
     required=["code"],
-    confirm=True,
+    confirm=lambda ctx, a: "always" if PY_DANGEROUS.search(str(a.get("code") or "")) else True,
     summary=lambda a: "Python-Code:\n" + a.get("code", ""),
+    scope=lambda a: (str(a.get("code", "")), "genau diesen Code"),
 )
 def run_python(ctx, code: str, timeout: int = 0):
     tmp_dir = Path(ctx.data_dir) / "tmp"
@@ -258,24 +327,33 @@ def run_python(ctx, code: str, timeout: int = 0):
     env = dict(os.environ, PYTHONIOENCODING="utf-8", PYTHONUTF8="1")
     timeout = max(1, min(int(timeout or ctx.cfg.get("befehl_timeout", 120)), 1800))
     try:
-        code_, out, err, timed_out = _run_process([sys.executable, path], ctx.workdir, timeout,
-                                                  ctx.cancel_event, env=env)
+        res = _run_process([sys.executable, path], ctx.workdir, timeout, ctx.cancel_event, env=env)
     finally:
         try:
             os.remove(path)
         except OSError:
             pass
-    return _format_result(code_, out, err, timed_out, timeout, int(ctx.cfg.get("max_ausgabe_zeichen", 8000)))
+    return _format_result(res, timeout, int(ctx.cfg.get("max_ausgabe_zeichen", 8000)))
 
 
 def _is_web_url(target: str) -> bool:
     return bool(re.match(r"^https?://", (target or "").strip(), re.I))
 
 
+def _open_scope(target: str):
+    """ "Immer erlauben" gilt nur für diese eine Webseite bzw. dieses eine Programm/diese Datei."""
+    target = target.strip().strip('"')
+    if _is_web_url(target):
+        from urllib.parse import urlsplit
+        host = urlsplit(target).hostname or target
+        return f"web:{host}", host
+    return f"open:{target.lower()}", target
+
+
 def _open_confirm(ctx, args) -> bool:
-    target = (args.get("target") or "").strip()
-    # Webseiten, die schon im Gespräch vorkamen, dürfen ohne Nachfrage geöffnet werden
-    return not (_is_web_url(target) and target in ctx.seen_urls)
+    target = str(args.get("target") or "").strip()
+    # Nur Webseiten, die du selbst im Chat genannt hast, öffnen sich ohne Nachfrage
+    return not (_is_web_url(target) and target in ctx.user_urls)
 
 
 @tool(
@@ -287,6 +365,7 @@ def _open_confirm(ctx, args) -> bool:
     required=["target"],
     confirm=_open_confirm,
     summary=lambda a: f"Öffnen: {a.get('target', '')}",
+    scope=lambda a: _open_scope(a.get("target") or ""),
 )
 def open_item(ctx, target: str):
     target = target.strip().strip('"')
@@ -379,7 +458,7 @@ def system_info(ctx):
     total, free = _ram_gb()
     lines = [
         f"Datum/Uhrzeit: {now_text()}",
-        f"Betriebssystem: {platform.system()} {platform.release()} ({platform.version()})",
+        f"Betriebssystem: {os_name()} ({platform.version()})",
         f"Rechnername: {platform.node()}",
         f"Benutzer: {os.environ.get('USERNAME') or os.environ.get('USER') or '?'}",
         f"Prozessor: {platform.processor() or platform.machine()} ({os.cpu_count()} Threads)",

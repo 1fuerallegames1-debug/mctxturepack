@@ -54,7 +54,7 @@ def _decode(body: bytes, content_type: str) -> str:
 
 
 class _TextExtractor(HTMLParser):
-    SKIP = {"script", "style", "noscript", "svg", "template", "iframe", "head", "nav", "footer", "form"}
+    SKIP = {"script", "style", "noscript", "svg", "template", "iframe", "head", "nav", "footer"}
     BLOCK = {"p", "div", "br", "li", "ul", "ol", "tr", "table", "section", "article", "header",
              "h1", "h2", "h3", "h4", "h5", "h6", "pre", "blockquote", "dd", "dt", "hr", "main"}
 
@@ -68,6 +68,8 @@ class _TextExtractor(HTMLParser):
     def handle_starttag(self, tag, attrs):
         if tag == "title":
             self._in_title = True
+        if tag == "body":
+            self.skip_depth = 0  # <body> beendet auch ein nicht geschlossenes <head>
         if tag in self.SKIP:
             self.skip_depth += 1
         elif tag in self.BLOCK:
@@ -214,6 +216,8 @@ def web_search(ctx, query: str, max_results: int = 6):
                 "automatische Anfragen – dann in config.json eine SearXNG-Instanz eintragen.)")
     n = max(1, min(int(max_results or 6), 15))
     lines = [f"Suchergebnisse für '{query}':"]
+    for r in results[:n]:
+        ctx.seen_urls.add(r["url"])  # Suchergebnisse dürfen ohne Nachfrage gelesen werden
     for i, r in enumerate(results[:n], 1):
         lines.append(f"{i}. {r['title']}\n   {r['url']}\n   {r['snippet']}")
     return "\n".join(lines)
@@ -222,7 +226,7 @@ def web_search(ctx, query: str, max_results: int = 6):
 def _fetch_confirm(ctx, args) -> bool:
     # Unbekannte Adressen nur nach Rückfrage abrufen. Grund: Eine manipulierte Webseite oder Datei
     # könnte die KI sonst dazu bringen, private Daten über eine präparierte URL hinauszuschicken.
-    url = (args.get("url") or "").strip()
+    url = str(args.get("url") or "").strip()
     return url not in ctx.seen_urls
 
 
@@ -237,6 +241,7 @@ def _fetch_confirm(ctx, args) -> bool:
     required=["url"],
     confirm=_fetch_confirm,
     summary=lambda a: f"Webseite abrufen: {a.get('url', '')}",
+    scope=lambda a: urllib.parse.urlsplit(str(a.get("url") or "").strip()).hostname,  # "immer" nur für diese Seite
 )
 def fetch_webpage(ctx, url: str, max_chars: int = 12000):
     url = url.strip()

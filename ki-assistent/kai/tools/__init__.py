@@ -43,6 +43,9 @@ class Tool:
     confirm: object = False
     # Funktion(args) -> kurze, menschenlesbare Beschreibung für die Nachfrage
     summary: Callable | None = None
+    # Funktion(args) -> Bereich, für den "immer erlauben" gilt: Text oder (Schlüssel, Anzeigetext),
+    # z. B. nur eine Webseite oder genau ein Befehl. None = gilt für das ganze Werkzeug.
+    scope: Callable | None = None
 
     def schema(self) -> dict:
         return {
@@ -58,6 +61,20 @@ class Tool:
         level = self.confirm(ctx, args) if callable(self.confirm) else self.confirm
         return level if level == "always" else bool(level)
 
+    def approval_scope(self, args: dict) -> tuple:
+        """(Schlüssel, Anzeigetext) für "immer erlauben" – (None, None) = ganzes Werkzeug."""
+        if not self.scope:
+            return None, None
+        try:
+            value = self.scope(args)
+        except Exception:
+            value = None
+        if isinstance(value, tuple):
+            return value
+        if value:
+            return value, value
+        return "?", "diesen einen Fall"  # Bereich nicht bestimmbar -> nie das ganze Werkzeug freigeben
+
     def describe(self, args: dict) -> str:
         if self.summary:
             try:
@@ -68,11 +85,11 @@ class Tool:
 
 
 def tool(name: str, description: str, parameters: dict | None = None, required=(),
-         confirm=False, summary: Callable | None = None):
+         confirm=False, summary: Callable | None = None, scope: Callable | None = None):
     """Decorator zum Registrieren eines Werkzeugs."""
     def deco(func):
         _REGISTERED[name] = Tool(name, description.strip(), parameters or {}, list(required),
-                                 func, confirm, summary)
+                                 func, confirm, summary, scope)
         return func
     return deco
 
@@ -84,7 +101,12 @@ class ToolContext:
     workdir: Path
     data_dir: Path
     memory: object = None
+    # Adressen, die Angel ohne Nachfrage abrufen darf (vom Benutzer oder aus Suchergebnissen)
     seen_urls: set = field(default_factory=set)
+    # Adressen, die der Benutzer selbst geschrieben hat (dürfen ohne Nachfrage im Browser geöffnet werden)
+    user_urls: set = field(default_factory=set)
+    # Hat die aktuelle Aufgabe schon fremde Inhalte gelesen (Webseiten, Dateien, Befehlsausgaben)?
+    untrusted_seen: bool = False
     cancel_event: threading.Event = field(default_factory=threading.Event)
 
     def resolve(self, path: str) -> Path:
@@ -97,9 +119,12 @@ class ToolContext:
             q = self.workdir / q
         return q
 
-    def remember_urls(self, text: str):
+    def remember_urls(self, text: str, from_user: bool = False):
         for url in URL_RE.findall(text or ""):
-            self.seen_urls.add(url.rstrip(".,;:!?"))
+            url = url.rstrip(".,;:!?")
+            self.seen_urls.add(url)
+            if from_user:
+                self.user_urls.add(url)
 
 
 def truncate(text: str, limit: int) -> str:
@@ -131,6 +156,8 @@ def _coerce(value, spec: dict):
                 return False
         if typ == "string" and isinstance(value, (int, float)) and not isinstance(value, bool):
             return str(value)
+        if typ == "string" and not isinstance(value, str) and value is not None:
+            raise ToolError(f"Parameter must be a text string, not {type(value).__name__}: {value!r}"[:300])
     except ValueError:
         pass
     return value
@@ -157,7 +184,10 @@ class ToolRegistry:
         clean = {}
         for key, value in args.items():
             if key in tool_obj.parameters:
-                clean[key] = _coerce(value, tool_obj.parameters[key])
+                try:
+                    clean[key] = _coerce(value, tool_obj.parameters[key])
+                except ToolError as e:
+                    raise ToolError(f"'{key}': {e}") from None
         missing = [r for r in tool_obj.required if clean.get(r) in (None, "")]
         if missing:
             raise ToolError(f"Fehlende Pflichtangabe(n): {', '.join(missing)}")
@@ -189,10 +219,12 @@ def load_builtin_tools():
 
 
 def load_plugins(folder: Path) -> list[str]:
-    """Lädt alle .py-Dateien aus dem Plugin-Ordner. Gibt Fehlermeldungen zurück."""
+    """Lädt alle .py-Dateien aus dem Plugin-Ordner. Gibt Fehler- und Warnmeldungen zurück."""
     errors = []
     if not folder.is_dir():
         return errors
+    load_builtin_tools()
+    builtin = {name: t.func for name, t in _REGISTERED.items()}
     for file in sorted(folder.glob("*.py")):
         if file.name.startswith("_"):
             continue
@@ -205,4 +237,8 @@ def load_plugins(folder: Path) -> list[str]:
         except Exception as e:  # ein kaputtes Plugin soll Kai nicht lahmlegen
             sys.modules.pop(mod_name, None)
             errors.append(f"Plugin {file.name} konnte nicht geladen werden: {e}")
+    for name, func in builtin.items():
+        if _REGISTERED[name].func is not func:
+            errors.append(f"Hinweis: Ein Plugin ersetzt das eingebaute Werkzeug '{name}'. "
+                          "Falls du das nicht selbst so eingerichtet hast, prüfe den Ordner 'plugins'.")
     return errors

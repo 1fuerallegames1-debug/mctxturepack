@@ -106,6 +106,49 @@ class OllamaClientTest(TempDirTest):
         finally:
             mock.close()
 
+    def test_truncated_stream_is_an_error(self):
+        mock = MockLLM([reply("halber Satz", truncate=True)])
+        try:
+            client = OllamaClient(make_cfg(self.tmp, server_url=mock.url))
+            with self.assertRaises(LLMError) as ctx:
+                run_stream(client, [{"role": "user", "content": "hi"}])
+            self.assertIn("mittendrin", str(ctx.exception))
+        finally:
+            mock.close()
+
+    def test_server_disconnect_is_an_error(self):
+        mock = MockLLM([reply("x", disconnect=True)])
+        try:
+            client = OllamaClient(make_cfg(self.tmp, server_url=mock.url))
+            with self.assertRaises(LLMError):
+                run_stream(client, [{"role": "user", "content": "hi"}])
+        finally:
+            mock.close()
+
+    def test_abort_while_model_is_loading(self):
+        import time
+        from kai.llm import Cancelled
+        mock = MockLLM([reply("spät", header_delay=5)])
+        cancel = threading.Event()
+        try:
+            client = OllamaClient(make_cfg(self.tmp, server_url=mock.url))
+            threading.Timer(0.5, lambda: (cancel.set(), client.abort())).start()
+            start = time.monotonic()
+            with self.assertRaises(Cancelled):
+                run_stream(client, [{"role": "user", "content": "hi"}], cancel=cancel)
+            self.assertLess(time.monotonic() - start, 3)
+        finally:
+            mock.close()
+
+    def test_tool_call_ids_are_unique(self):
+        mock = MockLLM([reply(tool_calls=[("list_directory", {})]), reply(tool_calls=[("list_directory", {})])])
+        try:
+            client = OllamaClient(make_cfg(self.tmp, server_url=mock.url))
+            ids = [run_stream(client, [{"role": "user", "content": "hi"}])[1]["tool_calls"][0]["id"] for _ in range(2)]
+        finally:
+            mock.close()
+        self.assertNotEqual(ids[0], ids[1])
+
     def test_cancel(self):
         mock = MockLLM([reply("a" * 30, delay=0.2)])
         cancel = threading.Event()
@@ -145,6 +188,9 @@ class OpenAIClientTest(TempDirTest):
         ])
         self.assertEqual(json.loads(out[0]["tool_calls"][0]["function"]["arguments"]), {"a": "ä"})
         self.assertEqual(out[1], {"role": "tool", "tool_call_id": "c1", "content": "r"})
+        bad = client._convert([{"role": "assistant", "content": "", "tool_calls": [
+            {"id": "c2", "name": "x", "arguments": None, "raw_arguments": '{"path": "C:\\x'}]}])
+        self.assertEqual(json.loads(bad[0]["tool_calls"][0]["function"]["arguments"]), {})
 
     def test_make_client(self):
         self.assertIsInstance(make_client(make_cfg(self.tmp, anbieter="lmstudio")), OpenAIClient)

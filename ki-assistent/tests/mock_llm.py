@@ -50,12 +50,27 @@ class MockLLM:
                 if self.path == "/api/show":
                     self._json(200, {"capabilities": mock.capabilities})
                     return
+                if self.path == "/api/pull":
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/x-ndjson")
+                    self.end_headers()
+                    for done in (0, 50, 100):
+                        self._send(json.dumps({"status": "pulling abc", "total": 100, "completed": done}) + "\n", 0)
+                    self._send(json.dumps({"status": "success"}) + "\n", 0)
+                    mock.models.append(payload.get("model", ""))
+                    return
                 if self.path not in ("/api/chat", "/v1/chat/completions"):
                     self._json(404, {"error": "not found"})
                     return
                 with mock.lock:
                     mock.requests.append(payload)
                     item = mock.script.pop(0) if mock.script else reply("(Skript leer)")
+                if item.get("header_delay"):
+                    time.sleep(item["header_delay"])  # z. B. Modell wird noch geladen
+                if item.get("disconnect"):
+                    self.close_connection = True
+                    self.connection.shutdown(2)
+                    return
                 if item.get("http_error"):
                     self._json(item["http_error"], {"error": item.get("error", "boom")})
                     return
@@ -83,6 +98,8 @@ class MockLLM:
                                            "done": False}) + "\n", delay)
                 for chunk in _chunks(item["content"]):
                     self._send(json.dumps({"message": {"role": "assistant", "content": chunk}, "done": False}) + "\n", delay)
+                if item.get("truncate"):
+                    return  # Server beendet die Verbindung ohne "done"
                 if item.get("stream_error"):
                     self._send(json.dumps({"error": item["stream_error"]}) + "\n", 0)
                     return

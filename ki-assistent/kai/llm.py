@@ -10,12 +10,16 @@ Die Clients übersetzen das in das jeweilige API-Format.
 
 from __future__ import annotations
 
+import http.client
 import json
 import re
+import select
 import socket
 import urllib.error
 import urllib.request
+import uuid
 from typing import Iterator
+from urllib.parse import urlsplit
 
 USER_AGENT = "Kai-Assistent/1.0"
 
@@ -31,6 +35,26 @@ class Cancelled(Exception):
 # --------------------------------------------------------------------------
 # HTTP-Hilfsfunktionen
 # --------------------------------------------------------------------------
+
+def _error_text(body: str) -> str:
+    """Holt die eigentliche Fehlermeldung aus einer JSON-Fehlerantwort."""
+    try:
+        parsed = json.loads(body)
+        err = parsed.get("error", parsed) if isinstance(parsed, dict) else parsed
+        if isinstance(err, dict):
+            err = err.get("message") or json.dumps(err, ensure_ascii=False)
+        return str(err)
+    except Exception:
+        return body
+
+
+def _no_connection(url: str, reason) -> LLMError:
+    base = url.split("/api/")[0].split("/v1/")[0]
+    return LLMError(
+        f"Keine Verbindung zum KI-Server unter {base} ({reason}).\n"
+        "Läuft Ollama? Starte die Ollama-App (oder im Terminal: ollama serve) und versuche es erneut."
+    )
+
 
 def _request(url: str, payload: dict | None = None, headers: dict | None = None,
              timeout: float = 600, method: str | None = None):
@@ -49,24 +73,13 @@ def _request(url: str, payload: dict | None = None, headers: dict | None = None,
             body = e.read().decode("utf-8", "replace")
         except Exception:
             pass
-        message = body
-        try:
-            parsed = json.loads(body)
-            err = parsed.get("error", parsed)
-            if isinstance(err, dict):
-                err = err.get("message") or json.dumps(err, ensure_ascii=False)
-            message = str(err)
-        except Exception:
-            pass
-        raise LLMError(_explain_http_error(e.code, message, url)) from None
+        raise LLMError(_explain_http_error(e.code, _error_text(body), url)) from None
     except urllib.error.URLError as e:
-        reason = getattr(e, "reason", e)
-        raise LLMError(
-            f"Keine Verbindung zum KI-Server unter {url.split('/api')[0].split('/v1')[0]} ({reason}).\n"
-            "Läuft Ollama? Starte die Ollama-App (oder im Terminal: ollama serve) und versuche es erneut."
-        ) from None
+        raise _no_connection(url, getattr(e, "reason", e)) from None
     except (socket.timeout, TimeoutError):
         raise LLMError("Der KI-Server hat zu lange nicht geantwortet (Zeitüberschreitung).") from None
+    except (http.client.HTTPException, ConnectionError) as e:
+        raise LLMError(f"Der KI-Server hat die Verbindung unerwartet beendet ({e}). Läuft Ollama noch?") from None
 
 
 def _explain_http_error(code: int, message: str, url: str) -> str:
@@ -103,7 +116,7 @@ def _iter_lines(resp, cancel_event=None) -> Iterator[str]:
                 yield line
     except Cancelled:
         raise
-    except (OSError, ValueError, AttributeError) as e:
+    except (OSError, ValueError, AttributeError, http.client.HTTPException) as e:
         # Wird auch ausgelöst, wenn die Verbindung beim Abbrechen geschlossen wurde
         if cancel_event is not None and cancel_event.is_set():
             raise Cancelled() from None
@@ -203,7 +216,7 @@ def extract_text_tool_calls(content: str, tool_names) -> tuple[list[dict], str]:
                 except ValueError:
                     continue
             if name in names and isinstance(args, dict):
-                calls.append({"id": f"text_call_{len(calls)}", "name": name,
+                calls.append({"id": f"call_{uuid.uuid4().hex[:12]}", "name": name,
                               "arguments": args, "raw_arguments": json.dumps(args, ensure_ascii=False)})
     if not calls:
         return [], content
@@ -236,16 +249,68 @@ class BaseClient:
         self.cfg = cfg
         self.model = cfg["modell"]
         self.timeout = float(cfg.get("antwort_timeout", 600))
-        self._active_response = None
+        self._active_conn = None
 
-    # Für den "Stopp"-Knopf: laufende Verbindung von außen schließen
     def abort(self):
-        resp = self._active_response
-        if resp is not None:
+        """Für den Stopp-Knopf: laufende Verbindung von außen sofort beenden."""
+        conn = self._active_conn
+        sock = getattr(conn, "sock", None)
+        if sock is not None:
             try:
-                resp.close()
+                sock.shutdown(socket.SHUT_RDWR)  # weckt auch blockierte Lesevorgänge auf
+            except OSError:
+                pass
+
+    def _close_conn(self):
+        conn, self._active_conn = self._active_conn, None
+        if conn is not None:
+            try:
+                conn.close()
             except Exception:
                 pass
+
+    def _open_stream(self, url: str, payload: dict, headers: dict, cancel_event=None):
+        """Startet eine gestreamte Anfrage. Ein Abbruch wirkt auch, während das Modell noch lädt."""
+        parts = urlsplit(url)
+        cls = http.client.HTTPSConnection if parts.scheme == "https" else http.client.HTTPConnection
+        conn = cls(parts.hostname, parts.port, timeout=self.timeout)
+        self._active_conn = conn
+        hdrs = {"User-Agent": USER_AGENT, "Content-Type": "application/json"}
+        hdrs.update(headers or {})
+        path = (parts.path or "/") + (f"?{parts.query}" if parts.query else "")
+        try:
+            conn.request("POST", path, body=json.dumps(payload).encode("utf-8"), headers=hdrs)
+            waited = 0.0
+            while True:  # auf das erste Byte warten, dabei regelmäßig auf "Stopp" prüfen
+                if cancel_event is not None and cancel_event.is_set():
+                    raise Cancelled()
+                sock = conn.sock
+                if sock is None or getattr(sock, "pending", lambda: 0)() or select.select([sock], [], [], 0.5)[0]:
+                    break
+                waited += 0.5
+                if waited > self.timeout:
+                    raise socket.timeout("keine Antwort")
+            resp = conn.getresponse()
+        except Cancelled:
+            self._close_conn()
+            raise
+        except (OSError, ValueError, http.client.HTTPException) as e:
+            self._close_conn()
+            if cancel_event is not None and cancel_event.is_set():
+                raise Cancelled() from None
+            if isinstance(e, (socket.timeout, TimeoutError)):
+                raise LLMError("Der KI-Server hat zu lange nicht geantwortet (Zeitüberschreitung).") from None
+            if isinstance(e, (ConnectionRefusedError, socket.gaierror)) or not isinstance(e, http.client.HTTPException):
+                raise _no_connection(url, e) from None
+            raise LLMError(f"Der KI-Server hat die Verbindung unerwartet beendet ({e}). Läuft Ollama noch?") from None
+        if resp.status >= 400:
+            try:
+                body = resp.read().decode("utf-8", "replace")
+            except Exception:
+                body = ""
+            self._close_conn()
+            raise LLMError(_explain_http_error(resp.status, _error_text(body), url))
+        return resp
 
     def chat_stream(self, messages, tools, cancel_event=None) -> Iterator[tuple[str, object]]:
         """Liefert ("thinking", text), ("text", text) und zum Schluss ("done", nachricht)."""
@@ -257,9 +322,9 @@ class BaseClient:
             found, rest = extract_text_tool_calls(content, tool_names)
             if found:
                 tool_calls, content = found, rest
-        for n, call in enumerate(tool_calls):
+        for call in tool_calls:
             if not call.get("id"):
-                call["id"] = f"call_{n}"
+                call["id"] = f"call_{uuid.uuid4().hex[:12]}"  # eindeutig über das ganze Gespräch
         return {"role": "assistant", "content": content.strip(), "thinking": thinking.strip(),
                 "tool_calls": tool_calls, "stats": stats}
 
@@ -375,8 +440,8 @@ class OllamaClient(BaseClient):
         tool_names = [t["function"]["name"] for t in tools or []]
         content, thinking, calls, stats = [], [], [], {}
         filt = ThinkTagFilter()
-        resp = _request(self.base + "/api/chat", payload, timeout=self.timeout)
-        self._active_response = resp
+        resp = self._open_stream(self.base + "/api/chat", payload, {}, cancel_event)
+        saw_done = False
         try:
             for line in _iter_lines(resp, cancel_event):
                 try:
@@ -399,14 +464,14 @@ class OllamaClient(BaseClient):
                     calls.append({"id": tc.get("id") or "", "name": fn.get("name", ""),
                                   "arguments": args, "raw_arguments": raw})
                 if obj.get("done"):
+                    saw_done = True
                     stats = {k: obj.get(k) for k in ("prompt_eval_count", "eval_count", "done_reason")}
                     break
         finally:
-            self._active_response = None
-            try:
-                resp.close()
-            except Exception:
-                pass
+            self._close_conn()
+        if not saw_done:
+            raise LLMError("Die Antwort brach mittendrin ab – die Verbindung zum KI-Server wurde unterbrochen. "
+                           "Läuft Ollama noch?")
         for kind, part in filt.flush():
             (thinking if kind == "thinking" else content).append(part)
             yield (kind, part)
@@ -450,8 +515,9 @@ class OpenAIClient(BaseClient):
                     d["tool_calls"] = [
                         {"id": c["id"], "type": "function",
                          "function": {"name": c["name"],
-                                      "arguments": json.dumps(c["arguments"], ensure_ascii=False)
-                                      if c.get("arguments") is not None else (c.get("raw_arguments") or "{}")}}
+                                      # immer gültiges JSON zurückschicken (manche Server prüfen das streng)
+                                      "arguments": json.dumps(c["arguments"] if c.get("arguments") is not None
+                                                              else {}, ensure_ascii=False)}}
                         for c in m["tool_calls"]
                     ]
                 out.append(d)
@@ -474,14 +540,15 @@ class OpenAIClient(BaseClient):
         tool_names = [t["function"]["name"] for t in tools or []]
         content, thinking, slots, stats = [], [], {}, {}
         filt = ThinkTagFilter()
-        resp = _request(self.base + "/chat/completions", payload, headers=self.headers, timeout=self.timeout)
-        self._active_response = resp
+        resp = self._open_stream(self.base + "/chat/completions", payload, self.headers, cancel_event)
+        saw_end = False
         try:
             for line in _iter_lines(resp, cancel_event):
                 if not line.startswith("data:"):
                     continue
                 data = line[5:].strip()
                 if data == "[DONE]":
+                    saw_end = True
                     break
                 try:
                     obj = json.loads(data)
@@ -518,13 +585,12 @@ class OpenAIClient(BaseClient):
                     elif isinstance(args, str):
                         slot["arguments"] += args
                 if choices[0].get("finish_reason"):
+                    saw_end = True
                     stats["done_reason"] = choices[0]["finish_reason"]
         finally:
-            self._active_response = None
-            try:
-                resp.close()
-            except Exception:
-                pass
+            self._close_conn()
+        if not saw_end:
+            raise LLMError("Die Antwort brach mittendrin ab – die Verbindung zum KI-Server wurde unterbrochen.")
         for kind, part in filt.flush():
             (thinking if kind == "thinking" else content).append(part)
             yield (kind, part)

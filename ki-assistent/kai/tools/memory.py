@@ -20,12 +20,33 @@ class Memory:
         self.load()
 
     def load(self):
+        self.facts = []
+        self.warning = ""
+        if not self.path.exists():
+            return
         try:
-            with open(self.path, encoding="utf-8") as f:
+            with open(self.path, encoding="utf-8-sig") as f:
                 data = json.load(f)
-            self.facts = [x for x in data if isinstance(x, dict) and x.get("text")]
-        except (OSError, ValueError):
-            self.facts = []
+            if not isinstance(data, list):
+                raise ValueError("keine Liste")
+        except (OSError, ValueError) as e:
+            # Kaputte Datei nicht überschreiben, sondern beiseitelegen
+            backup = self.path.with_name(f"gedaechtnis.defekt-{_dt.datetime.now():%Y%m%d_%H%M%S}.json")
+            try:
+                self.path.replace(backup)
+            except OSError:
+                pass
+            self.warning = f"Das Gedächtnis konnte nicht gelesen werden ({e}). Die Datei wurde nach {backup.name} verschoben."
+            return
+        used = set()
+        for item in data:
+            if not isinstance(item, dict) or not isinstance(item.get("text"), str) or not item["text"].strip():
+                continue
+            fact_id = item.get("id")
+            if not isinstance(fact_id, int) or isinstance(fact_id, bool) or fact_id in used:
+                fact_id = max(used, default=0) + 1
+            used.add(fact_id)
+            self.facts.append({**item, "id": fact_id})
 
     def save(self):
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -57,7 +78,7 @@ class Memory:
 
     def prompt_text(self) -> str:
         facts = self.facts[-MAX_FACTS_IN_PROMPT:]
-        return "\n".join(f"[{f['id']}] {f['text']}" for f in facts)
+        return "\n".join(f"[{f.get('id')}] {f.get('text', '')}" for f in facts)
 
 
 @tool(
@@ -67,6 +88,10 @@ class Memory:
     "Use it when the user tells you something worth remembering or explicitly asks you to remember.",
     {"fact": {"type": "string", "description": "The fact, written as a short complete sentence."}},
     required=["fact"],
+    # Nach dem Lesen fremder Inhalte (Webseiten, Dateien ...) erst fragen – sonst könnten diese
+    # dauerhaft falsche "Fakten" in Angels Gedächtnis schreiben.
+    confirm=lambda ctx, a: bool(ctx.untrusted_seen),
+    summary=lambda a: f"Dauerhaft merken: {a.get('fact', '')}",
 )
 def remember(ctx, fact: str):
     if ctx.memory is None:
