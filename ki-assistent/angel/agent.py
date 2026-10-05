@@ -20,7 +20,7 @@ from typing import Callable, Iterator
 from .config import PROJECT_DIR, working_dir
 from .llm import Cancelled, LLMError, make_client
 from .regeln import PROMPT as RULES_PROMPT
-from .regeln import blocked_reason, sensitive_reason
+from .regeln import blocked_reason, integrity_notice, sensitive_reason
 from .tools import ToolContext, ToolError, ToolRegistry, load_builtin_tools, load_plugins, truncate
 from .tools.memory import Memory
 from .tools.system import known_folders, os_name, shell_description
@@ -79,6 +79,10 @@ class Agent:
         self.memory = memory or Memory(data / "gedaechtnis.json")
         if getattr(self.memory, "warning", ""):
             self.plugin_errors.append(self.memory.warning)  # wird beim Start angezeigt
+        if registry is None:  # nur beim echten Start, nicht in Tests mit eigenem Werkzeugkasten
+            notice = integrity_notice(data)
+            if notice:
+                self.plugin_errors.append(notice)
         self.ctx = ToolContext(cfg=cfg, workdir=working_dir(cfg), data_dir=data, memory=self.memory)
         self.history: list[dict] = []
         self.session_allowed: set[str] = set()
@@ -283,7 +287,9 @@ class Agent:
     def run(self, user_text: str, approve: Approver) -> Iterator[dict]:
         """Bearbeitet eine Nachricht und liefert Ereignisse für die Oberfläche."""
         self.ctx.cancel_event.clear()
-        self.ctx.untrusted_seen = False
+        # Fremde Inhalte (Webseiten, Dateien …) bleiben im Gespräch – also gilt das für das ganze Gespräch
+        self.ctx.untrusted_seen = any(m["role"] == "tool" and m.get("name") not in TRUSTED_TOOLS
+                                      for m in self.history)
         self.ctx.remember_urls(user_text, from_user=True)
         start_len = len(self.history)
         self.history.append({"role": "user", "content": user_text})
@@ -339,7 +345,9 @@ class Agent:
 
     def _execute(self, call: dict, approve: Approver):
         """Führt einen Werkzeugaufruf aus. Liefert (Ergebnis fürs Modell, Status, Ergebnis für die Anzeige)."""
-        name = call.get("name") or ""
+        name = str(call.get("name") or "")
+        if not re.fullmatch(r"[A-Za-z0-9_.-]{1,64}", name):
+            name = re.sub(r"[^A-Za-z0-9_.-]", "?", name)[:64] or "?"  # vom Modell erfundene Namen entschärfen
         tool_obj = self.registry.get(name)
         raw_args = call.get("arguments")
         start = {"type": "tool_start", "id": call["id"], "name": name,
@@ -380,7 +388,8 @@ class Agent:
             request = {"id": call["id"], "tool": name, "args": args, "summary": start["summary"],
                        "dangerous": level == "always", "warning": warning,
                        # None = keine "immer"-Option, "" = ganzes Werkzeug, sonst nur dieser Bereich
-                       "always_label": None if level == "always" else (scope_label or "")}
+                       "always_label": (None if level == "always" or (scope_key is not None and not scope_label)
+                                        else (scope_label or ""))}
             decision = approve(request) if approve else "no"
             if self.ctx.cancel_event.is_set():
                 raise Cancelled()  # "Stopp" ist keine Ablehnung

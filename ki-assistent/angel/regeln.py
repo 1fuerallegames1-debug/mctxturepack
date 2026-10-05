@@ -7,6 +7,10 @@ ihren eigenen Programmkern nicht bearbeiten (siehe PROTECTED_DIR in den Werkzeug
 
 from __future__ import annotations
 
+import hashlib
+import json
+import os
+import re
 from pathlib import Path
 
 # So werden die Regeln dem Benutzer angezeigt
@@ -40,31 +44,76 @@ def as_text(name: str) -> str:
     return "\n".join(f"{i}. {rule.format(name=name)}" for i, rule in enumerate(REGELN, 1))
 
 
-def touches_core(path: Path) -> bool:
-    """True, wenn ein Pfad im geschützten Programmkern liegt."""
+RULES_FILE = re.compile(r"(?<![\w-])regeln\.py\b")
+# Code-Dateien im Projektordner würden beim nächsten Start mitgeladen (z. B. als Ersatz für Python-Module)
+CODE_SUFFIXES = {".py", ".pyc", ".pyd", ".pyw", ".pth", ".so", ".dll"}
+
+
+def _norm(text: str) -> str:
+    return (text or "").lower().replace("\\", "/")
+
+
+def _inside(path: Path, folder: Path) -> bool:
     try:
-        path.resolve().relative_to(PROTECTED_DIR)
+        Path(path).resolve().relative_to(Path(folder).resolve())
         return True
     except (ValueError, OSError):
         return False
 
 
-def mentions_rules_file(text: str) -> bool:
-    return "regeln.py" in (text or "").lower()
+def touches_core(path: Path) -> bool:
+    """True, wenn ein Pfad im geschützten Programmkern liegt."""
+    return _inside(path, PROTECTED_DIR)
+
+
+def _is_startup_code(path: Path) -> bool:
+    """Python-Code im Projektordner (außer im Plugin-Ordner) würde Angel beim Start verändern."""
+    return (_inside(path, PROJECT_DIR) and not _inside(path, PROJECT_DIR / "plugins")
+            and Path(path).suffix.lower() in CODE_SUFFIXES)
+
+
+def _command_cwd(args: dict, ctx) -> Path:
+    folder = str(args.get("working_directory") or "")
+    try:
+        return ctx.resolve(folder) if folder else Path(ctx.workdir)
+    except Exception:
+        return Path(ctx.workdir)
+
+
+def _mentions(text: str, ref: str) -> bool:
+    """Kommt ein (normalisierter) Pfad im Text vor? Einzelne Namen nur als ganzes Wort."""
+    if not ref or ref in (".", ".."):
+        return False
+    if "/" in ref:
+        return ref in text
+    return re.search(rf"(?<![\w.-]){re.escape(ref)}(?![\w-])", text) is not None
+
+
+def _relative(target: Path, cwd: Path) -> str:
+    try:
+        rel = _norm(os.path.relpath(target, cwd))
+    except ValueError:  # anderes Laufwerk unter Windows
+        return ""
+    return "" if rel.startswith("../..") else rel
 
 
 def blocked_reason(tool_name: str, args: dict, ctx) -> str | None:
     """Verhindert, dass Angel ihren eigenen Programmkern oder die Grundregeln verändert (Regel 3)."""
-    core = str(PROTECTED_DIR).lower()
     if tool_name == "write_file":
         try:
-            if touches_core(ctx.resolve(args.get("path") or "")):
-                return PROTECTED_MESSAGE
+            target = ctx.resolve(str(args.get("path") or ""))
         except Exception:
             return None
+        if touches_core(target) or _is_startup_code(target):
+            return PROTECTED_MESSAGE
     elif tool_name in ("run_command", "run_python"):
-        text = (args.get("command") or args.get("code") or "").lower()
-        if mentions_rules_file(text) or core in text or core.replace("\\", "/") in text:
+        text = _norm(str(args.get("command") or args.get("code") or ""))
+        cwd = _command_cwd(args, ctx)
+        if touches_core(cwd) or RULES_FILE.search(text):
+            return PROTECTED_MESSAGE
+        refs = {_norm(str(PROTECTED_DIR)), f"{PROJECT_DIR.name}/{PROTECTED_DIR.name}".lower(),
+                _relative(PROTECTED_DIR, cwd)}
+        if any(_mentions(text, ref) for ref in refs):
             return PROTECTED_MESSAGE
     return None
 
@@ -72,27 +121,70 @@ def blocked_reason(tool_name: str, args: dict, ctx) -> str | None:
 # Dateien, über die sich Sicherheitsabfragen abschalten ließen -> immer nachfragen (auch im Automatik-Modus)
 PROJECT_DIR = PROTECTED_DIR.parent
 SENSITIVE_NAMES = ("config.json", "config.beispiel.json", "start.bat", "start-web.bat", "start-handy.bat",
-                   "start.sh", "zugang.json", "gedaechtnis.json")
-SENSITIVE_WARNING = ("ACHTUNG: Das ändert Einstellungen, Plugins oder Startdateien. Damit ließen sich "
+                   "start.sh")
+DATA_FILES = ("zugang.json", "gedaechtnis.json")
+SENSITIVE_WARNING = ("ACHTUNG: Das ändert Angels Einstellungen, Plugins oder Startdateien. Damit ließen sich "
                      "Sicherheitsabfragen abschalten – nur erlauben, wenn du das wirklich willst.")
+
+
+def _sensitive_path(path: Path, data_dir: Path) -> bool:
+    p = Path(path)
+    if _inside(p, PROJECT_DIR / "plugins"):
+        return True
+    if p.name.lower() in SENSITIVE_NAMES and _inside(p.parent, PROJECT_DIR) and p.resolve().parent == PROJECT_DIR.resolve():
+        return True
+    return p.name.lower() in DATA_FILES and _inside(p, data_dir)
 
 
 def sensitive_reason(tool_name: str, args: dict, ctx) -> str | None:
     """Warnung für Aktionen, die Angels Einstellungen, Plugins oder Startdateien verändern."""
+    data_dir = Path(getattr(ctx, "data_dir", PROJECT_DIR / "daten"))
     if tool_name == "write_file":
         try:
-            target = ctx.resolve(str(args.get("path") or "")).resolve()
+            target = ctx.resolve(str(args.get("path") or ""))
         except Exception:
             return None
-        if target.name.lower() in SENSITIVE_NAMES:
-            return SENSITIVE_WARNING
-        try:
-            target.relative_to(PROJECT_DIR / "plugins")
-            return SENSITIVE_WARNING
-        except ValueError:
-            return None
+        return SENSITIVE_WARNING if _sensitive_path(target, data_dir) else None
     if tool_name in ("run_command", "run_python"):
-        text = str(args.get("command") or args.get("code") or "").lower()
-        if any(name in text for name in SENSITIVE_NAMES) or "plugins" in text:
+        text = _norm(str(args.get("command") or args.get("code") or ""))
+        cwd = _command_cwd(args, ctx)
+        if _inside(cwd, PROJECT_DIR) or _inside(cwd, data_dir):
+            return SENSITIVE_WARNING  # Befehle direkt in Angels Ordnern
+        refs = {_norm(str(PROJECT_DIR)), PROJECT_DIR.name.lower(), _norm(str(data_dir)),
+                _relative(PROJECT_DIR, cwd), *DATA_FILES}
+        if any(_mentions(text, ref) for ref in refs):
             return SENSITIVE_WARNING
     return None
+
+
+def core_fingerprint() -> dict:
+    """Prüfsummen aller Dateien des Programmkerns."""
+    result = {}
+    for f in sorted(PROTECTED_DIR.rglob("*")):
+        if f.is_file() and "__pycache__" not in f.parts:
+            result[f.relative_to(PROTECTED_DIR).as_posix()] = hashlib.sha256(f.read_bytes()).hexdigest()
+    return result
+
+
+def integrity_notice(data_dir: Path) -> str:
+    """Meldet, wenn sich der Programmkern seit dem letzten Start verändert hat (z. B. nach einem Update –
+    oder falls ihn etwas anderes verändert hat). Der neue Stand wird danach gespeichert."""
+    path = Path(data_dir) / "kern.json"
+    current = core_fingerprint()
+    try:
+        previous = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        previous = None
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(current, indent=1), encoding="utf-8")
+    except OSError:
+        pass
+    if not isinstance(previous, dict):
+        return ""
+    changed = sorted(k for k in set(previous) | set(current) if previous.get(k) != current.get(k))
+    if not changed:
+        return ""
+    files = ", ".join(changed[:5]) + (" …" if len(changed) > 5 else "")
+    return (f"Hinweis: Angels Programmkern hat sich seit dem letzten Start geändert ({files}). "
+            "Nach einem Update ist das normal. Falls du nichts aktualisiert hast, prüfe den Ordner 'angel'.")

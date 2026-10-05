@@ -309,7 +309,7 @@ class TerminalChat:
                 close_text()
                 # die ersten zwei Zeilen, damit z. B. der eigentliche Befehl sichtbar ist
                 summary = " · ".join(safe(ev["summary"]).splitlines()[:2]) if ev["summary"] else ""
-                self.out(f"{s.magenta}  ⚙ {ev['name']}{s.reset} {s.dim}{summary[:self.width - 10]}{s.reset}")
+                self.out(f"{s.magenta}  ⚙ {safe(ev['name'])}{s.reset} {s.dim}{summary[:self.width - 10]}{s.reset}")
             elif t == "tool_result":
                 self._show_result(ev)
             elif t == "info":
@@ -401,6 +401,7 @@ class TerminalChat:
                              else line for line in safe(req["summary"]).splitlines())
             self.out(self._indent(body, prefix=f"  {s.yellow}│{s.reset} "))
             label = req.get("always_label")
+            label = safe(label) if label else label
             if req.get("warning"):
                 self.out(f"  {s.yellow}│{s.reset} {s.red}{s.bold}{req['warning']}{s.reset}")
             if label is None:

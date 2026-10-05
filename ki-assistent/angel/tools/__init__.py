@@ -69,11 +69,13 @@ class Tool:
             value = self.scope(args)
         except Exception:
             value = None
+        if value is None:
+            return "?", None  # Bereich nicht bestimmbar -> keine "immer"-Option
         if isinstance(value, tuple):
             return value
         if value:
             return value, value
-        return "?", "diesen einen Fall"  # Bereich nicht bestimmbar -> nie das ganze Werkzeug freigeben
+        return "?", None
 
     def describe(self, args: dict) -> str:
         if self.summary:
@@ -190,7 +192,8 @@ class ToolRegistry:
                     clean[key] = _coerce(value, tool_obj.parameters[key])
                 except ToolError as e:
                     raise ToolError(f"'{key}': {e}") from None
-        missing = [r for r in tool_obj.required if clean.get(r) in (None, "")]
+        # leerer Text ist nur bei "content" erlaubt (z. B. leere Datei anlegen)
+        missing = [r for r in tool_obj.required if clean.get(r) is None or (clean.get(r) == "" and r != "content")]
         if missing:
             raise ToolError(f"Fehlende Pflichtangabe(n): {', '.join(missing)}")
         # Nur Parameter übergeben, die die Funktion auch kennt

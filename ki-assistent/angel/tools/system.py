@@ -28,6 +28,7 @@ WOCHENTAGE = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samsta
 DANGEROUS = re.compile(
     r"(\b(Remove-Item|rm|ri|del|erase|rd|rmdir)\b[^\n|;&]*?(\s-r(e(c(u(r(se?)?)?)?)?)?\b|\s/s\b)"  # rekursiv löschen
     r"|\brm\b[^\n|;&]*?\s-(-recursive\b|[a-z]*r)"                                       # bash: rm -r, -rf, -R
+    r"|\s-r(e(c(u(r(se?)?)?)?)?)?\b[^\n]*\|[^\n]*\b(Remove-Item|ri|rm|del|erase)\b"            # gci -Recurse | Remove-Item
     r"|\bdel\s+/[sfq]|\bformat(\.com)?\s+[a-z]:|\bmkfs|\bdd\s+if=|\bdiskpart\b|\bshutdown\b"
     r"|\bbcdedit\b|\breg\s+delete\b|\bcipher\s+/w|\bStop-Computer\b|\bRestart-Computer\b"
     r"|\bClear-Disk\b|\bFormat-Volume\b|\bInitialize-Disk\b|\bvssadmin\s+delete|\bwbadmin\s+delete"
@@ -69,7 +70,8 @@ def shell_description() -> str:
     if IS_WINDOWS:
         if shutil.which("pwsh"):
             return "PowerShell 7 (pwsh)"
-        return "Windows PowerShell 5.1 (`&&` does not work there - use `;` or separate commands)"
+        return ("Windows PowerShell 5.1 (`&&` does not work there - use `;` or separate commands). "
+                "Create or edit text and config files with write_file, not with `>` or Out-File")
     return "bash" if shutil.which("bash") else "sh"
 
 
@@ -252,9 +254,12 @@ def run_command(ctx, command: str, working_directory: str = "", timeout: int = 0
                    "try { [Console]::OutputEncoding=[System.Text.Encoding]::UTF8 } catch {}; "
                    "$OutputEncoding=[System.Text.Encoding]::UTF8; "
                    + ("Remove-Item -LiteralPath $PSCommandPath -ErrorAction SilentlyContinue; " if background else "")
-                   + "$Error.Clear(); $global:LASTEXITCODE=0\n")
+                   # Windows PowerShell 5.1 schreibt mit ">" sonst UTF-16, das viele Programme nicht lesen
+                   + "if ($PSVersionTable.PSVersion.Major -lt 6) { $PSDefaultParameterValues['Out-File:Encoding']='Default' }; "
+                   + "$global:LASTEXITCODE=0\n")
         # Nachspann: PowerShell meldet sonst auch bei Fehlern Exit-Code 0
-        epilogue = "\nif ($LASTEXITCODE) { exit $LASTEXITCODE } elseif ($Error.Count) { exit 1 }\n"
+        # (bewusst unterdrückte Fehler wie -ErrorAction SilentlyContinue zählen nicht)
+        epilogue = "\n$__angel_ok = $?; if ($LASTEXITCODE) { exit $LASTEXITCODE } elseif (-not $__angel_ok) { exit 1 }\n"
         Path(script_file).write_text(prelude + command + epilogue, encoding="utf-8-sig")
         args = [_powershell_exe(), "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
                 "-File", script_file]
@@ -340,18 +345,43 @@ def _is_web_url(target: str) -> bool:
     return bool(re.match(r"^https?://", (target or "").strip(), re.I))
 
 
+def clean_web_url(target: str) -> str | None:
+    """Webadresse normalisieren. None bei ungewöhnlichen Adressen (Benutzername/@, Backslash, Leerzeichen),
+    bei denen Python und der Browser unterschiedliche Server erkennen könnten."""
+    from urllib.parse import urlsplit, urlunsplit
+    target = (target or "").strip()
+    if any(c in target for c in "\\ \t\r\n") or any(ord(c) < 32 for c in target):
+        return None
+    try:
+        parts = urlsplit(target)
+        host, port = parts.hostname, parts.port
+    except ValueError:
+        return None
+    if parts.scheme.lower() not in ("http", "https") or not host or "@" in parts.netloc:
+        return None
+    netloc = host if port is None else f"{host}:{port}"
+    if ":" in host and not host.startswith("["):
+        netloc = f"[{host}]" + ("" if port is None else f":{port}")
+    return urlunsplit((parts.scheme.lower(), netloc, parts.path, parts.query, parts.fragment))
+
+
 def _open_scope(target: str):
     """ "Immer erlauben" gilt nur für diese eine Webseite bzw. dieses eine Programm/diese Datei."""
     target = target.strip().strip('"')
     if _is_web_url(target):
+        clean = clean_web_url(target)
+        if clean is None:
+            return None  # ungewöhnliche Adresse: kein "immer erlauben"
         from urllib.parse import urlsplit
-        host = urlsplit(target).hostname or target
+        host = urlsplit(clean).hostname
         return f"web:{host}", host
     return f"open:{target.lower()}", target
 
 
 def _open_confirm(ctx, args) -> bool:
     target = str(args.get("target") or "").strip()
+    if _is_web_url(target) and clean_web_url(target) is None:
+        return "always"  # ungewöhnliche Adresse: immer nachfragen
     # Nur Webseiten, die du selbst im Chat genannt hast, öffnen sich ohne Nachfrage
     return not (_is_web_url(target) and target in ctx.user_urls)
 
@@ -370,8 +400,9 @@ def _open_confirm(ctx, args) -> bool:
 def open_item(ctx, target: str):
     target = target.strip().strip('"')
     if _is_web_url(target):
-        webbrowser.open(target)
-        return f"Im Browser geöffnet: {target}"
+        url = clean_web_url(target) or target  # geprüft: genau diese Adresse öffnet der Browser
+        webbrowser.open(url)
+        return f"Im Browser geöffnet: {url}"
     path = ctx.resolve(target)
     looks_like_path = any(sep in target for sep in ("/", "\\")) or path.exists()
     try:

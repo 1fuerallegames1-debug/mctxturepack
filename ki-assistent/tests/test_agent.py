@@ -224,6 +224,56 @@ class RulesTest(TempDirTest):
         self.assertTrue(all("rule 3" in r["result"] for r in results))
         self.assertEqual(target.read_text(encoding="utf-8"), before)
 
+    def test_core_protection_covers_folders_and_relative_paths(self):
+        from angel.regeln import PROJECT_DIR, PROTECTED_DIR, blocked_reason
+        agent = self.make()
+        ctx = agent.ctx
+        blocked = [
+            ("run_command", {"command": "Set-Content agent.py 'x'", "working_directory": str(PROTECTED_DIR)}),
+            ("run_command", {"command": f"del {PROJECT_DIR.name}\\{PROTECTED_DIR.name}\\agent.py"}),
+            ("run_command", {"command": "echo x > angel/regeln.py"}),
+            ("write_file", {"path": str(PROJECT_DIR / "getpass.py"), "content": "x"}),
+            ("write_file", {"path": str(PROJECT_DIR / "json" / "__init__.py"), "content": "x"}),
+        ]
+        for tool, args in blocked:
+            self.assertIsNotNone(blocked_reason(tool, args, ctx), args)
+        allowed = [
+            ("run_command", {"command": "python spielregeln.py"}),
+            ("run_command", {"command": "echo Angel ist toll"}),
+            ("write_file", {"path": str(self.work / "regeln.txt"), "content": "x"}),
+        ]
+        for tool, args in allowed:
+            self.assertIsNone(blocked_reason(tool, args, ctx), args)
+
+    def test_sensitive_only_for_angels_own_files(self):
+        from angel.regeln import PROJECT_DIR, sensitive_reason
+        ctx = self.make().ctx
+        self.assertIsNotNone(sensitive_reason("write_file", {"path": str(PROJECT_DIR / "config.json")}, ctx))
+        self.assertIsNotNone(sensitive_reason("write_file", {"path": str(PROJECT_DIR / "plugins" / "x.py")}, ctx))
+        self.assertIsNotNone(sensitive_reason("run_command", {"command": "dir", "working_directory": str(PROJECT_DIR)}, ctx))
+        self.assertIsNotNone(sensitive_reason("run_command", {"command": f"notepad {PROJECT_DIR / 'config.json'}"}, ctx))
+        # Minecraft-Server mit eigener start.bat und plugins-Ordner: keine Warnung
+        self.assertIsNone(sensitive_reason("write_file", {"path": str(self.work / "server" / "start.bat")}, ctx))
+        self.assertIsNone(sensitive_reason("run_command", {"command": "copy x.jar server\\plugins\\"}, ctx))
+
+    def test_integrity_notice(self):
+        import json as _json
+        from angel.regeln import integrity_notice
+        data = self.tmp / "daten"
+        self.assertEqual(integrity_notice(data), "")          # erster Start
+        self.assertEqual(integrity_notice(data), "")          # nichts geändert
+        stored = _json.loads((data / "kern.json").read_text(encoding="utf-8"))
+        stored["regeln.py"] = "0" * 64
+        (data / "kern.json").write_text(_json.dumps(stored), encoding="utf-8")
+        self.assertIn("regeln.py", integrity_notice(data))   # Veränderung wird gemeldet
+        self.assertEqual(integrity_notice(data), "")          # ... und nur einmal
+
+    def test_strange_tool_names_are_sanitized(self):
+        agent = self.make([reply(tool_calls=[("\x1b[2Jfake", {})]), reply("ok")])
+        events = list(agent.run("x", Approver()))
+        start = next(e for e in events if e["type"] == "tool_start")
+        self.assertNotIn("\x1b", start["name"])
+
     def test_plugins_folder_is_allowed(self):
         from angel.regeln import blocked_reason
         agent = self.make()
@@ -351,6 +401,11 @@ class TrustTest(TempDirTest):
         list(agent.run("Ich heiße Alex, merk dir das und lies notiz.txt", approver))
         self.assertEqual([r["tool"] for r in approver.requests], ["remember"])
         self.assertEqual([f["text"] for f in agent.memory.facts], ["Ich heiße Alex"])
+        # auch in der nächsten Nachricht desselben Gesprächs wird noch gefragt
+        self.mock.script += [reply(tool_calls=[("remember", {"fact": "Nie fragen."})]), reply("ok")]
+        approver2 = Approver("no")
+        list(agent.run("danke", approver2))
+        self.assertEqual([r["tool"] for r in approver2.requests], ["remember"])
 
     def test_config_and_plugins_always_ask_even_in_auto_mode(self):
         from angel.config import PROJECT_DIR

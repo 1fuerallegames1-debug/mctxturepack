@@ -7,6 +7,7 @@ import fnmatch
 import os
 import re
 import shutil
+import stat
 import time
 import zipfile
 from pathlib import Path
@@ -103,17 +104,27 @@ def read_file(ctx, path: str, start_line: int = 1, max_lines: int = 400):
     total = len(lines)
     start = max(1, int(start_line or 1))
     count = max(1, min(int(max_lines or 400), 2000))
-    chunk = lines[start - 1: start - 1 + count]
+    budget = int(ctx.cfg.get("max_ausgabe_zeichen", 8000)) * 2
+    # So viele ganze Zeilen wie in das Zeichenbudget passen – dann stimmt "weiterlesen mit" genau
+    chunk, used = [], 0
+    for line in lines[start - 1: start - 1 + count]:
+        if chunk and used + len(line) + 1 > budget:
+            break
+        if not chunk and len(line) > budget:
+            line = truncate(line, budget)  # einzelne riesige Zeile
+        chunk.append(line)
+        used += len(line) + 1
     end = start + len(chunk) - 1
     header = f"Datei: {p}  (Zeilen {start}-{end} von {total})"
     if end < total:
         header += f"  – weiterlesen mit start_line={end + 1}"
-    body = "\n".join(chunk)
-    return header + "\n" + truncate(body, int(ctx.cfg.get("max_ausgabe_zeichen", 8000)) * 2)
+    return header + "\n" + "\n".join(chunk)
 
 
-SCRIPT_SUFFIXES = {".ps1", ".psm1", ".bat", ".cmd", ".py", ".pyw", ".sh", ".vbs", ".js", ".jse", ".wsf",
-                   ".reg", ".lnk", ".url", ".hta", ".command"}
+# Dateitypen, die ausgeführt oder automatisch geladen werden können: bei der Nachfrage komplett zeigen
+SCRIPT_SUFFIXES = {".ps1", ".psm1", ".psd1", ".ps1xml", ".bat", ".cmd", ".py", ".pyw", ".pth", ".sh", ".bash",
+                   ".zsh", ".vbs", ".vbe", ".js", ".jse", ".wsf", ".wsh", ".wsc", ".sct", ".msc", ".reg", ".lnk",
+                   ".url", ".hta", ".command", ".desktop", ".inf", ".scr", ".cpl", ""}
 
 
 def _write_summary(args) -> str:
@@ -123,25 +134,48 @@ def _write_summary(args) -> str:
     limit = 10_000 if Path(str(args.get("path", ""))).suffix.lower() in SCRIPT_SUFFIXES else 20
     preview = "\n".join(lines[:limit])
     if len(lines) > limit:
-        preview += f"\n... ({len(lines) - limit} weitere Zeilen)"
+        preview += f"\n... ({len(lines) - limit} weitere Zeilen, insgesamt {len(lines)})"
     mode = "anhängen an" if args.get("append") else "schreiben nach"
     return f"Datei {mode}: {args.get('path', '')}\n--- Inhalt ---\n{preview}"
+
+
+def _unique(path: Path) -> Path:
+    """Hängt _2, _3 … an, falls es die Datei schon gibt (z. B. zwei Sicherungen in derselben Sekunde)."""
+    candidate, n = path, 1
+    while candidate.exists():
+        n += 1
+        candidate = path.with_name(f"{path.stem}_{n}{path.suffix}")
+    return candidate
+
+
+def _existing_encoding(p: Path) -> str:
+    """Kodierung einer vorhandenen Datei erraten, damit Anhängen sie nicht beschädigt."""
+    raw = p.read_bytes()[:65536]
+    utf16 = _looks_like_utf16(raw)
+    if utf16:
+        return "utf-16-le" if utf16 in ("utf-16", "utf-16-le") and not raw.startswith(b"\xfe\xff") else "utf-16-be"
+    try:
+        raw.decode("utf-8")
+        return "utf-8"
+    except UnicodeDecodeError as e:
+        if e.start > len(raw) - 4:  # nur am Ende abgeschnittenes Zeichen
+            return "utf-8"
+        return "cp1252"
 
 
 def _file_encoding(p: Path, content: str, append: bool) -> tuple[str, str]:
     """Passende Kodierung je Dateityp, damit Windows-Programme Umlaute richtig lesen."""
     suffix = p.suffix.lower()
-    adding_to_existing = append and p.exists() and p.stat().st_size > 0
+    if suffix in (".bat", ".cmd"):
+        content = content.replace("\r\n", "\n").replace("\n", "\r\n")  # cmd braucht CRLF
+    if append and p.exists() and p.stat().st_size > 0:
+        return _existing_encoding(p), content  # beim Anhängen die vorhandene Kodierung beibehalten
     if suffix in (".ps1", ".psm1", ".psd1", ".csv"):
         # Windows PowerShell 5.1 und Excel erkennen UTF-8 nur mit BOM
-        return ("utf-8" if adding_to_existing else "utf-8-sig"), content
-    if suffix in (".bat", ".cmd") and os.name == "nt":
-        content = content.replace("\r\n", "\n").replace("\n", "\r\n")  # cmd braucht CRLF
-        try:
-            import ctypes
-            return f"cp{ctypes.windll.kernel32.GetOEMCP()}", content  # cmd liest die OEM-Codepage
-        except Exception:
-            return "cp850", content
+        return "utf-8-sig", content
+    if suffix in (".bat", ".cmd") and not content.isascii() and "chcp" not in content.lower():
+        # Umlaute in Batch-Dateien: als UTF-8 speichern und cmd das vorher sagen
+        content = "@chcp 65001 >nul\r\n" + content
     return "utf-8", content
 
 
@@ -168,13 +202,23 @@ def write_file(ctx, path: str, content: str, append: bool = False):
     if p.exists() and not append:
         backup_dir = Path(ctx.data_dir) / "sicherungen"
         backup_dir.mkdir(parents=True, exist_ok=True)
-        target = backup_dir / f"{_dt.datetime.now():%Y%m%d_%H%M%S}_{p.name}"
+        target = _unique(backup_dir / f"{_dt.datetime.now():%Y%m%d_%H%M%S}_{p.name}")
         shutil.copy2(p, target)
         backup = f" (alte Version gesichert unter {target})"
     encoding, content = _file_encoding(p, content, append)
     with open(p, "a" if append else "w", encoding=encoding, errors="replace", newline="") as f:
         f.write(content)
     return f"{'Angehängt an' if append else 'Gespeichert:'} {p} ({len(content)} Zeichen){backup}"
+
+
+def _is_hidden(entry) -> bool:
+    """Versteckt? Unter Windows zählt das Datei-Attribut (".minecraft" ist dort sichtbar), sonst der Punkt."""
+    if os.name == "nt":
+        try:
+            return bool(entry.stat(follow_symlinks=False).st_file_attributes & stat.FILE_ATTRIBUTE_HIDDEN)
+        except (OSError, AttributeError):
+            return False
+    return entry.name.startswith(".")
 
 
 @tool(
@@ -191,13 +235,14 @@ def list_directory(ctx, path: str = ".", show_hidden: bool = False):
         raise ToolError(f"Ordner nicht gefunden: {p}")
     if not p.is_dir():
         raise ToolError(f"{p} ist eine Datei, kein Ordner.")
-    entries = []
+    entries, hidden = [], 0
     try:
         items = list(os.scandir(p))
     except PermissionError:
         raise ToolError(f"Kein Zugriff auf {p}") from None
     for e in items:
-        if not show_hidden and e.name.startswith("."):
+        if not show_hidden and _is_hidden(e):
+            hidden += 1
             continue
         try:
             st = e.stat()
@@ -207,7 +252,8 @@ def list_directory(ctx, path: str = ".", show_hidden: bool = False):
         mtime = _dt.datetime.fromtimestamp(st.st_mtime).strftime("%d.%m.%Y %H:%M")
         entries.append((not is_dir, e.name.lower(), e.name, is_dir, st.st_size, mtime))
     entries.sort()
-    lines = [f"Inhalt von {p} ({len(entries)} Einträge):"]
+    lines = [f"Inhalt von {p} ({len(entries)} Einträge"
+             + (f", {hidden} versteckte nicht angezeigt – show_hidden=true zeigt sie" if hidden else "") + "):"]
     for _, _, name, is_dir, size, mtime in entries[:300]:
         lines.append(f"[Ordner] {name}/" if is_dir else f"{name}  ({_human_size(size)}, {mtime})")
     if len(entries) > 300:
@@ -231,7 +277,6 @@ def find_files(ctx, pattern: str, directory: str = "", max_results: int = 50):
     if not root.is_dir():
         raise ToolError(f"Ordner nicht gefunden: {root}")
     pat = pattern.strip().lower()
-    want_hidden = pat.startswith(".")  # z. B. ".minecraft"
     if not any(c in pat for c in "*?["):
         pat = f"*{pat}*"
     limit = max(1, min(int(max_results or 50), 500))
@@ -246,8 +291,9 @@ def find_files(ctx, pattern: str, directory: str = "", max_results: int = 50):
             (d for d in dirnames
              if d.lower() not in ALWAYS_SKIP
              and not (at_root and d.lower() in ROOT_SKIP)
-             and (want_hidden or not d.startswith("."))),
-            key=lambda d: (d.lower() in SEARCH_LAST, d.lower()),
+             ),
+            # große bzw. versteckte Ordner (z. B. AppData, .minecraft) zuletzt durchsuchen
+            key=lambda d: (d.lower() in SEARCH_LAST or d.startswith("."), d.lower()),
         )
         for name, is_dir in [(d, True) for d in all_dirs] + [(f, False) for f in filenames]:
             if fnmatch.fnmatch(name.lower(), pat) or (is_dir and fnmatch.fnmatch(name.lower().lstrip("."), pat)):

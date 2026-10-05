@@ -58,6 +58,38 @@ class FileToolsTest(ToolTestBase):
         files.write_file(self.ctx, "sub/neu.txt", "drei", append=True)
         self.assertEqual((self.work / "sub" / "neu.txt").read_text(encoding="utf-8"), "zweidrei")
 
+    def test_read_file_paging_never_skips_lines(self):
+        self.cfg["max_ausgabe_zeichen"] = 1000
+        (self.work / "log.txt").write_text("\n".join(f"{i:04d} " + "x" * 95 for i in range(1, 101)), encoding="utf-8")
+        seen, start = [], 1
+        for _ in range(50):
+            out = files.read_file(self.ctx, "log.txt", start_line=start)
+            seen += [int(line[:4]) for line in out.splitlines()[1:]]
+            if "start_line=" not in out:
+                break
+            start = int(out.split("start_line=")[1].split()[0])
+        self.assertEqual(seen, list(range(1, 101)))
+
+    def test_backups_do_not_overwrite_each_other(self):
+        for text in ("eins", "zwei", "drei"):
+            files.write_file(self.ctx, "config.yml", text)
+        backups = sorted(p.read_text(encoding="utf-8") for p in (self.tmp / "daten" / "sicherungen").iterdir())
+        self.assertEqual(backups, ["eins", "zwei"])
+
+    def test_append_keeps_existing_encoding(self):
+        (self.work / "u16.txt").write_bytes("Größe\r\n".encode("utf-16"))
+        files.write_file(self.ctx, "u16.txt", "Übel\r\n", append=True)
+        self.assertEqual((self.work / "u16.txt").read_bytes().decode("utf-16"), "Größe\r\nÜbel\r\n")
+        (self.work / "ansi.txt").write_bytes("Größe\n".encode("cp1252"))
+        files.write_file(self.ctx, "ansi.txt", "Übel\n", append=True)
+        self.assertEqual((self.work / "ansi.txt").read_bytes().decode("cp1252"), "Größe\nÜbel\n")
+
+    def test_batch_files_get_crlf_and_utf8(self):
+        files.write_file(self.ctx, "sicherung.bat", "@echo off\nxcopy Welten D:\\Übersicht\n")
+        raw = (self.work / "sicherung.bat").read_bytes()
+        self.assertTrue(raw.startswith(b"@chcp 65001 >nul\r\n@echo off\r\n"))
+        self.assertIn("Übersicht".encode("utf-8"), raw)
+
     def test_utf16_files(self):
         (self.work / "ps.txt").write_bytes("Größe\r\nZeile 2".encode("utf-16"))  # mit BOM
         self.assertIn("Größe", files.read_file(self.ctx, "ps.txt"))
@@ -94,7 +126,7 @@ class FileToolsTest(ToolTestBase):
         self.assertNotIn(".versteckt", listing)
         found = files.find_files(self.ctx, "*.jpg", directory=str(self.work))
         self.assertIn("Strand.JPG", found)
-        self.assertNotIn("strand2", found)
+        self.assertLess(found.index("Strand.JPG"), found.index("strand2"))  # versteckte Ordner zuletzt
         self.assertNotIn("strand3", found)
         self.assertIn(".versteckt", files.find_files(self.ctx, ".versteckt", directory=str(self.work)))
         self.assertIn("Nichts gefunden", files.find_files(self.ctx, "gibtsnicht", directory=str(self.work)))
@@ -164,9 +196,10 @@ class SafetyTest(ToolTestBase):
                      "reg delete HKLM\\x", "Format-Volume -DriveLetter D", "rm -r -fo C:\\Users\\Max\\alt",
                      'rmdir "$HOME\\Documents" -Recurse', "Remove-Item X -r -Force", "del D:\\Server -Recurse",
                      "rm -r -f ~/x", "rm -R ordner", "rm --recursive x", "vssadmin delete shadows /all /quiet",
-                     "Clear-RecycleBin -Force", "Set-MpPreference -DisableRealtimeMonitoring $true"]
+                     "Clear-RecycleBin -Force", "Set-MpPreference -DisableRealtimeMonitoring $true",
+                     "gci $HOME\\Documents -Recurse -File | Remove-Item -Force"]
         harmless = ["ls -la", "Get-ChildItem", "echo format", "git status", "Remove-Item a.txt", "dir",
-                    "rm datei.txt", "Get-ChildItem -Recurse", "del alt.log"]
+                    "rm datei.txt", "Get-ChildItem -Recurse", "del alt.log", "gci -Recurse | Select-Object Name"]
         for cmd in dangerous:
             self.assertEqual(system._command_confirm(self.ctx, {"command": cmd}), "always", cmd)
         for cmd in harmless:
@@ -179,6 +212,19 @@ class SafetyTest(ToolTestBase):
         self.assertTrue(system._open_confirm(self.ctx, {"target": "https://from-search.example"}))
         self.assertTrue(system._open_confirm(self.ctx, {"target": "https://evil.example/?x=1"}))
         self.assertTrue(system._open_confirm(self.ctx, {"target": "C:\\Downloads\\setup.exe"}))
+
+    def test_unusual_urls_always_ask(self):
+        self.assertEqual(system.clean_web_url("https://www.youtube.com/watch?v=1"), "https://www.youtube.com/watch?v=1")
+        for url in ("https://www.youtube.com\\@evil.example/", "https://user@evil.example/", "https://a b.de/"):
+            self.assertIsNone(system.clean_web_url(url), url)
+            self.assertEqual(system._open_confirm(self.ctx, {"target": url}), "always")
+            self.assertIsNone(system._open_scope(url))
+
+    def test_risky_file_types_are_shown_completely(self):
+        content = "\n".join(f"zeile {i}" for i in range(60))
+        self.assertIn("zeile 59", files._write_summary({"path": "C:/x/autorun.pth", "content": content}))
+        self.assertIn("zeile 59", files._write_summary({"path": "/home/x/.bashrc", "content": content}))
+        self.assertIn("insgesamt 60", files._write_summary({"path": "notiz.txt", "content": content}))
 
     def test_clixml_cleanup(self):
         raw = ('#< CLIXML\r\n<Objs Version="1.1.0.1"><S S="Error">Fehler: Datei fehlt_x000D__x000A_</S>'
@@ -197,6 +243,17 @@ class RegistryTest(ToolTestBase):
             reg.prepare_args(tool, {"start_line": 1})
         with self.assertRaises(ToolError):
             reg.prepare_args(tool, None)
+
+    def test_each_tool_runs_its_own_function(self):
+        for name, t in ToolRegistry().tools.items():
+            self.assertEqual(t.func.__name__, name)
+
+    def test_empty_content_is_allowed_for_files(self):
+        reg = ToolRegistry()
+        self.assertEqual(reg.prepare_args(reg.get("write_file"), {"path": "leer.txt", "content": ""}),
+                         {"path": "leer.txt", "content": ""})
+        with self.assertRaises(ToolError):
+            reg.prepare_args(reg.get("write_file"), {"path": "", "content": "x"})
 
     def test_schemas_are_valid(self):
         for schema in ToolRegistry().schemas():

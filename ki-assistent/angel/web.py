@@ -11,8 +11,11 @@ import base64
 import ipaddress
 import json
 import secrets
+import os
 import socket
+import sys
 import threading
+import time
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -30,6 +33,19 @@ STATIC = Path(__file__).resolve().parent / "static"
 MAX_BODY = 2 * 1024 * 1024
 APPROVAL_TIMEOUT = 15 * 60
 POLL_TIMEOUT = 25
+BATCH_DELAY = 0.15
+
+
+class _Server(ThreadingHTTPServer):
+    daemon_threads = True
+    # Unter Windows würde SO_REUSEADDR einem zweiten Angel erlauben, denselben Port zu belegen
+    allow_reuse_address = os.name != "nt"
+
+    def handle_error(self, request, client_address):
+        exc = sys.exc_info()[1]
+        if isinstance(exc, (ConnectionError, TimeoutError)):
+            return  # Browser-Tab geschlossen oder neu geladen – kein Grund für eine Fehlermeldung
+        super().handle_error(request, client_address)
 
 
 def _is_loopback(host: str) -> bool:
@@ -113,6 +129,10 @@ class Run:
         with self.cond:
             if since >= len(self.events) and not self.done:
                 self.cond.wait(timeout)
+                # kurz weitere Ereignisse sammeln, statt für jedes einzelne Wort eine Anfrage zu beantworten
+                end = time.monotonic() + BATCH_DELAY
+                while not self.done and time.monotonic() < end:
+                    self.cond.wait(end - time.monotonic())
             since = max(0, min(since, len(self.events)))
             return self.events[since:], len(self.events), self.done
 
@@ -129,7 +149,10 @@ class WebApp:
         self.pending: dict[str, dict] = {}
         self.pending_lock = threading.Lock()
         self.run: Run | None = None
-        self._run_counter = 0
+        # eindeutig auch über Neustarts hinweg (eine wieder verbundene Seite erkennt den neuen Server)
+        self._run_counter = int(time.time() * 1000)
+        self.instance = secrets.token_hex(4)
+        self.generation = 0  # steigt bei "Neuer Chat"
         self.httpd: ThreadingHTTPServer | None = None
 
     # ------------------------------------------------------------ Server
@@ -139,8 +162,7 @@ class WebApp:
         last_error = None
         for port in ([0] if self.port == 0 else range(self.port, self.port + 20)):
             try:
-                httpd = ThreadingHTTPServer((self.host, port), handler)
-                httpd.daemon_threads = True
+                httpd = _Server((self.host, port), handler)
                 self.port = httpd.server_address[1]
                 self.httpd = httpd
                 return httpd
@@ -355,6 +377,7 @@ class AngelHandler(BaseHTTPRequestHandler):
                 "busy": app.busy.locked(), "plugin_errors": agent.plugin_errors, "phone": app.phone,
                 "rules": [r.format(name=agent.cfg.get("name") or "Angel") for r in REGELN],
                 "run": {"id": run.id, "done": run.done} if run else None,
+                "generation": f"{app.instance}-{app.generation}",
             })
         elif path == "/api/history":
             self._send_json(200, {"items": app.history_for_ui()})
@@ -404,7 +427,7 @@ class AngelHandler(BaseHTTPRequestHandler):
         except ValueError:
             self._send_json(400, {"error": "Ungültige Anfrage."})
             return
-        if run is None or run.id != run_id:
+        if run is None or run.id != run_id or since > len(run.events):
             self._send_json(404, {"error": "Diese Aufgabe gibt es nicht mehr."})
             return
         events, nxt, done = run.wait(since, POLL_TIMEOUT)
@@ -441,6 +464,7 @@ class AngelHandler(BaseHTTPRequestHandler):
             else:
                 agent.reset()
                 app.run = None
+                app.generation += 1
                 self._send_json(200, {"ok": True})
         elif path == "/api/settings":
             self._settings(data)

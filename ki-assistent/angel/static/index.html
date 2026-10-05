@@ -56,6 +56,7 @@
   label.toggle { display: flex; align-items: center; gap: 6px; font-size: 14px; color: var(--muted); cursor: pointer; }
   label.toggle.on { color: var(--err); font-weight: 600; }
   main { flex: 1; overflow-y: auto; padding: 16px; -webkit-overflow-scrolling: touch; }
+  header, main, footer { padding-left: max(16px, env(safe-area-inset-left)); padding-right: max(16px, env(safe-area-inset-right)); }
   .chat { max-width: 860px; margin: 0 auto; display: flex; flex-direction: column; gap: 12px; }
   .msg { padding: 10px 14px; border-radius: 12px; max-width: 100%; overflow-wrap: anywhere; }
   .msg.user { background: var(--user); align-self: flex-end; max-width: 85%; white-space: pre-wrap; }
@@ -117,7 +118,8 @@
   @media (max-width: 640px) {
     header { padding: 8px 10px; gap: 6px; } main { padding: 10px; } footer { padding: 8px 10px 10px; }
     header h1 small, .hint, #autoText { display: none; }
-    select { max-width: 130px; }
+    select { max-width: 130px; font-size: 16px; }   /* iPhone zoomt sonst beim Antippen */
+    header, main, footer { padding-left: max(10px, env(safe-area-inset-left)); padding-right: max(10px, env(safe-area-inset-right)); }
     .msg.user { max-width: 92%; }
   }
 </style>
@@ -169,8 +171,8 @@ const store = {
 
 class HttpError extends Error { constructor(msg, status) { super(msg); this.status = status; } }
 
-async function api(path, body) {
-  const opts = { method: body === undefined ? "GET" : "POST", headers: { "X-Angel-Token": token }, cache: "no-store" };
+async function api(path, body, signal) {
+  const opts = { method: body === undefined ? "GET" : "POST", headers: { "X-Angel-Token": token }, cache: "no-store", signal };
   if (body !== undefined) { opts.headers["Content-Type"] = "application/json"; opts.body = JSON.stringify(body); }
   let res;
   try { res = await fetch(path, opts); }
@@ -331,7 +333,9 @@ function addApproval(ev) {
   const pre = document.createElement("pre"); pre.textContent = ev.summary; box.appendChild(pre);
   if (ev.warning) { const w = div("title", ev.warning); w.style.color = "var(--err)"; box.appendChild(w); }
   const buttons = div("buttons");
+  const shownAt = Date.now();
   const decide = async (decision) => {
+    if (Date.now() - shownAt < 700) return;   // Schutz vor versehentlichem Klick/Tastendruck beim Erscheinen
     buttons.querySelectorAll("button").forEach((b) => (b.disabled = true));
     try { await api("/api/approve", { approval_id: ev.approval_id, decision }); }
     catch (e) { buttons.querySelectorAll("button").forEach((b) => (b.disabled = false));
@@ -352,7 +356,7 @@ function addApproval(ev) {
   box.appendChild(buttons);
   approvals[ev.approval_id] = box;
   add(box);
-  if (!isTouch) yes.focus();
+  // Bewusst KEIN Fokus auf "Erlauben": sonst würde ein Leer- oder Enter-Tastendruck beim Weitertippen zustimmen
   if (navigator.vibrate) { try { navigator.vibrate(150); } catch (e) {} }
 }
 function closeApproval(id, decision) {
@@ -391,7 +395,12 @@ function makeRenderer(replay) {
           if (!bubble) { bubble = addAssistant(""); bubble.classList.add("cursor"); }
           bubbleText += ev.text; dirty = true; break;   // gezeichnet wird einmal pro Paket (flush)
         case "assistant":
-          endThinking(); finishBubble();
+          endThinking();
+          // Hat das Modell einen Werkzeugaufruf als Text geschrieben, zeigt "content" den bereinigten Text
+          if (bubble && (ev.content || "").trim() !== bubbleText.trim()) {
+            if (ev.content) { bubbleText = ev.content; dirty = true; } else { bubble.remove(); bubble = null; bubbleText = ""; }
+          }
+          finishBubble();
           if (!replay) speak(ev.content);
           break;
         case "tool_start": finishBubble(); tools[ev.id] = addTool(ev.name, ev.summary, "", null); openTools.add(ev.id); break;
@@ -420,22 +429,29 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // Holt neue Ereignisse, bis die Aufgabe fertig ist. Übersteht Verbindungsabbrüche (z. B. Handy-Display aus).
 async function follow(runId, replay) {
   const renderer = makeRenderer(replay);
-  currentRun = { id: runId, since: 0 };
+  currentRun = { id: runId, since: 0, ctrl: null, kick: false };
+  shown.runId = runId;
   setBusy(true);
   let failures = 0;
   try {
     for (;;) {
       if (!currentRun || currentRun.id !== runId) return;
       let data;
+      const ctrl = new AbortController();
+      currentRun.ctrl = ctrl;
+      const timer = setTimeout(() => ctrl.abort(), 35000);   // stille Verbindungsabbrüche erkennen
       try {
-        data = await api(`/api/events?run=${runId}&since=${currentRun.since}`);
+        data = await api(`/api/events?run=${runId}&since=${currentRun.since}`, undefined, ctrl.signal);
         failures = 0; setStatus("");
       } catch (e) {
-        if (e.status === 404 || e.status === 401) { if (e.status === 401) showNoToken(); break; }
+        if (e.status === 404 || e.status === 401) { if (e.status === 401) showNoToken(); else syncLater(); break; }
+        if (currentRun && currentRun.kick) { currentRun.kick = false; continue; }   // Seite wieder sichtbar: sofort neu
         failures++;
         setStatus("Verbindung unterbrochen – versuche es erneut …");
         await sleep(Math.min(10000, 500 * 2 ** Math.min(failures, 5)));
         continue;
+      } finally {
+        clearTimeout(timer);
       }
       for (const ev of data.events) renderer.handle(ev);
       renderer.flush();
@@ -448,18 +464,45 @@ async function follow(runId, replay) {
   }
 }
 
-// Läuft gerade eine Aufgabe (z. B. am PC gestartet), die diese Seite noch nicht anzeigt? Dann anzeigen.
-async function attachIfRunning() {
-  if (!token || currentRun) return;
+// ---------- Abgleich mit anderen Geräten ----------
+// Was diese Seite zuletzt vom Server gezeigt hat: Gesprächs-Generation und letzte Aufgabe
+const shown = { generation: null, runId: null };
+
+async function renderAll(st) {
+  const h = await api("/api/history");
+  chat.replaceChildren();
+  Object.keys(approvals).forEach((id) => delete approvals[id]);
+  if (!h.items.length && !(st.run && !st.run.done)) showWelcome();
+  for (const it of h.items) {
+    if (it.role === "user") addUser(it.text);
+    else if (it.role === "assistant") addAssistant(it.text);
+    else if (it.role === "tool") addTool(it.name, it.summary, it.result, it.status || "ok");
+  }
+  shown.generation = st.generation;
+  shown.runId = st.run ? st.run.id : null;
+  if (st.run && !st.run.done) follow(st.run.id, true);   // laufende Aufgabe (auch von einem anderen Gerät) anzeigen
+}
+
+// Hat ein anderes Gerät inzwischen etwas getan (Aufgabe gestartet/beendet, neuer Chat)? Dann neu anzeigen.
+let syncing = false;
+async function syncIdle() {
+  if (!token || currentRun || busy || syncing || document.visibilityState !== "visible") return;
+  syncing = true;
   try {
     const st = await api("/api/status");
-    if (st.run && !st.run.done && !currentRun) {
-      addInfo("Eine Aufgabe läuft gerade – sie wird hier angezeigt.");
-      follow(st.run.id, true);
+    if (!currentRun && !busy && (st.generation !== shown.generation || (st.run && st.run.id !== shown.runId))) {
+      await renderAll(st);
     }
-  } catch (e) {}
+  } catch (e) {} finally { syncing = false; }
 }
-document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") attachIfRunning(); });
+function syncLater() { setTimeout(syncIdle, 300); }
+setInterval(syncIdle, 3000);
+window.addEventListener("focus", syncIdle);
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState !== "visible") return;
+  if (currentRun && currentRun.ctrl) { currentRun.kick = true; currentRun.ctrl.abort(); }   // sofort nachholen
+  else syncIdle();
+});
 
 // ---------- Senden ----------
 function setBusy(b) {
@@ -468,13 +511,19 @@ function setBusy(b) {
   sendBtn.className = (b ? "danger" : "primary") + " send";
 }
 
+let sentAt = 0;
 async function send() {
-  if (busy) { try { await api("/api/stop", {}); } catch (e) {} return; }
+  if (busy) {
+    if (Date.now() - sentAt < 1000) return;   // Doppelklick auf "Senden" soll nicht gleich stoppen
+    try { await api("/api/stop", {}); } catch (e) {}
+    return;
+  }
   const text = input.value.trim();
   if (!text) return;
   if ("speechSynthesis" in window) speechSynthesis.cancel();
   input.value = ""; autosize();
   const bubble = add(div("msg user", text));
+  sentAt = Date.now();
   setBusy(true);
   let r;
   try {
@@ -485,7 +534,7 @@ async function send() {
     bubble.remove();
     if (!input.value) { input.value = text; autosize(); }   // Text nicht verlieren
     addError(e.message || String(e));
-    if (e.status === 409) attachIfRunning();                 // auf einem anderen Gerät gestartete Aufgabe anzeigen
+    if (e.status === 409) syncLater();                       // auf einem anderen Gerät gestartete Aufgabe anzeigen
     return;
   }
   try {
@@ -504,7 +553,7 @@ $("form").addEventListener("submit", (e) => { e.preventDefault(); send(); });
 
 $("newChat").onclick = async () => {
   if (busy) { addInfo("Bitte erst die laufende Aufgabe stoppen."); return; }
-  try { await api("/api/reset", {}); showWelcome(); } catch (e) { addError(e.message); }
+  try { await api("/api/reset", {}); shown.generation = null; await syncIdle(); } catch (e) { addError(e.message); }
 };
 
 $("auto").onchange = async (e) => {
@@ -578,16 +627,9 @@ async function init() {
     $("title").textContent = st.name;
     input.placeholder = "Schreib " + st.name + ", was zu tun ist …";
     updateAuto(st.auto);
-    const h = await api("/api/history");
-    if (!h.items.length && !(st.run && !st.run.done)) showWelcome(); else chat.replaceChildren();
+    await renderAll(st);
     (st.plugin_errors || []).forEach((m) => addError(m));
-    for (const it of h.items) {
-      if (it.role === "user") addUser(it.text);
-      else if (it.role === "assistant") addAssistant(it.text);
-      else if (it.role === "tool") addTool(it.name, it.summary, it.result, it.status || "ok");
-    }
     loadModels();
-    if (st.run && !st.run.done) follow(st.run.id, true);   // laufende Aufgabe weiter anzeigen
   } catch (e) {
     if (e.status === 401) showNoToken(); else { showWelcome(); addError(e.message); }
   }
