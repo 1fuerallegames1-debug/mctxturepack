@@ -315,6 +315,12 @@ class RobustnessTest(TempDirTest):
         self.assertLessEqual(sum(_estimate_tokens(m) for m in msgs[1:]), max(1500, budget))
         self.assertEqual(len(agent.history), 13)  # der echte Verlauf bleibt unverändert
 
+    def test_failed_command_is_marked_as_error(self):
+        agent = self.make([reply(tool_calls=[("run_command", {"command": "exit 3"})]), reply("ok")],
+                          bestaetigung="automatisch")
+        events = list(agent.run("x", Approver()))
+        self.assertEqual(next(e for e in events if e["type"] == "tool_result")["status"], "error")
+
     def test_context_warning(self):
         self.assertIn("zu klein", self.make(kontext_laenge=4096).context_warning())
         self.assertEqual(self.make(kontext_laenge=16384).context_warning(), "")

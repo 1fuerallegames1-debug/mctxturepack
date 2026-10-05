@@ -19,7 +19,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
 from . import icons
-from .agent import DENIED_MESSAGE, Agent
+from .agent import DENIED_MESSAGE, FAILED_EXIT, INTERRUPTED_NOTE, NOT_RUN_NOTE, Agent
 from .config import save_setting
 from .llm import LLMError
 from .qr import QrCode
@@ -244,9 +244,12 @@ class WebApp:
                     summary = tool_obj.describe(args) if tool_obj else json.dumps(args, ensure_ascii=False)
                     res = results.get(call["id"], {}).get("content", "")
                     status = ("denied" if res == DENIED_MESSAGE
-                              else "error" if res.startswith("Error") else "ok")
+                              else "cancelled" if res in (NOT_RUN_NOTE, INTERRUPTED_NOTE)
+                              else "error" if res.startswith(("Error", "Refused")) or FAILED_EXIT.search(res)
+                              else "ok")
                     items.append({"role": "tool", "name": call["name"], "summary": summary,
-                                  "result": "Vom Benutzer abgelehnt." if status == "denied" else truncate(res, 4000),
+                                  "result": {"denied": "Vom Benutzer abgelehnt.", "cancelled": "Abgebrochen."}.get(
+                                      status, truncate(res, 4000)),
                                   "status": status})
         return items
 
@@ -340,7 +343,7 @@ class KaiHandler(BaseHTTPRequestHandler):
             return
         if path in ("/manifest.webmanifest", "/icon.svg", "/icon-180.png", "/icon-192.png", "/icon-512.png"):
             if self._guard(need_auth=False):
-                self._static_asset(path)
+                self._static_asset(path, parse_qs(url.query))
             return
         if not self._guard():
             return
@@ -369,12 +372,18 @@ class KaiHandler(BaseHTTPRequestHandler):
         else:
             self._send_json(404, {"error": "Nicht gefunden."})
 
-    def _static_asset(self, path: str):
+    def _static_asset(self, path: str, query: dict):
         name = self.app.agent.cfg.get("name") or "Angel"
         cache = {"Cache-Control": "max-age=86400"}
         if path == "/manifest.webmanifest":
+            # Wer den Schlüssel schon kennt, bekommt ihn als Startadresse – so funktioniert die App auf dem
+            # Startbildschirm (z. B. iPhone, das dafür einen eigenen Speicher nutzt) ohne erneutes Scannen.
+            given = (query.get("token") or [""])[0]
+            start = "/"
+            if given and secrets.compare_digest(given.encode(), self.app.token.encode()):
+                start = f"/#token={self.app.token}"
             manifest = {
-                "name": name, "short_name": name, "start_url": "/", "display": "standalone",
+                "id": "/", "name": name, "short_name": name, "start_url": start, "display": "standalone",
                 "background_color": "#15181c", "theme_color": "#4f46e5", "lang": "de",
                 "icons": [{"src": "/icon-192.png", "sizes": "192x192", "type": "image/png"},
                           {"src": "/icon-512.png", "sizes": "512x512", "type": "image/png"},
@@ -497,14 +506,14 @@ def run_web(agent: Agent, open_browser: bool = True, port: int | None = None, ph
     if app.phone:
         urls = app.phone_urls()
         if urls:
-            print(f"\nHandy verbinden: Handy ins selbe WLAN, dann diesen QR-Code mit der Kamera scannen:\n")
+            print("\nHandy verbinden: Handy ins selbe WLAN, dann diesen QR-Code mit der Kamera scannen:\n")
             _print_qr(urls[0])
             print(f"\n   oder Adresse eintippen: {urls[0]}")
             for u in urls[1:]:
                 print(f"   andere Netzwerk-Adresse: {u}" + ("  (Tailscale – auch unterwegs)" if _is_tailscale(urlsplit(u).hostname or "") else ""))
         else:
             print("Keine Netzwerk-Adresse gefunden – ist der PC mit dem WLAN/LAN verbunden?")
-        print("\nWICHTIG: Wer diesen Link kennt, kann Angel Aufträge geben. Nur im eigenen WLAN nutzen und nicht weitergeben.\n"
+        print(f"\nWICHTIG: Wer diesen Link kennt, kann {name} Aufträge geben. Nur im eigenen WLAN nutzen und nicht weitergeben.\n"
               "Falls Windows nach der Firewall fragt: Zugriff für 'Private Netzwerke' erlauben.\n"
               "Neuen Schlüssel erzeugen (alte Links werden ungültig): mit --neuer-schluessel starten.")
     print("\nZum Beenden dieses Fenster schließen oder Strg+C drücken.\n")

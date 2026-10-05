@@ -1,12 +1,12 @@
 {
   "_hinweis": "Deine Einstellungen. Erklärung aller Werte: siehe README.md (Abschnitt 'Einstellungen').",
-  "name": "Kai",
+  "name": "Angel",
   "dein_name": "",
-  "sprache": "Deutsch",
+  "sprache": "Deutsch und Englisch",
 
   "anbieter": "ollama",
   "modell": "qwen3:8b",
-  "server_url": "http://localhost:11434",
+  "server_url": "http://127.0.0.1:11434",
   "kontext_laenge": 16384,
   "temperatur": 0.6,
   "denken": null,
@@ -20,6 +20,7 @@
   "arbeitsordner": "",
 
   "websuche": { "anbieter": "duckduckgo", "searxng_url": "" },
+  "handy_zugriff": false,
   "web_port": 8765,
 
   "zusatz_anweisungen": ""

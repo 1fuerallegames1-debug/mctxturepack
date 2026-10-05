@@ -87,13 +87,13 @@ def _explain_http_error(code: int, message: str, url: str) -> str:
     if "does not support tools" in low:
         return (
             f"Das Modell unterstützt keine Werkzeuge (Tool-Calling): {message}\n"
-            "Kai braucht ein Modell mit Werkzeug-Unterstützung, z. B. qwen3:8b, qwen3.5 oder gemma4.\n"
+            "Nötig ist ein Modell mit Werkzeug-Unterstützung, z. B. qwen3:8b, qwen3.5 oder gemma4.\n"
             "Liste: https://ollama.com/search?c=tools"
         )
     if code == 404 and ("not found" in low or "model" in low):
         return (
             f"Modell nicht gefunden: {message}\n"
-            "Lade es herunter mit:  ollama pull <modellname>   (oder nutze /modelle in Kai)."
+            "Lade es herunter mit:  ollama pull <modellname>   (installierte Modelle zeigt /modelle)."
         )
     if code in (401, 403):
         return f"Zugriff verweigert ({code}): {message}. Prüfe 'api_schluessel' in config.json."
@@ -355,7 +355,7 @@ class OllamaClient(BaseClient):
 
     def __init__(self, cfg: dict):
         super().__init__(cfg)
-        base = cfg.get("server_url") or "http://localhost:11434"
+        base = cfg.get("server_url") or "http://127.0.0.1:11434"
         base = base.rstrip("/")
         for suffix in ("/api", "/v1"):
             if base.endswith(suffix):
@@ -379,7 +379,7 @@ class OllamaClient(BaseClient):
                 if isinstance(caps, list) and "tools" not in caps:
                     info["warning"] = (
                         f"Achtung: '{self.model}' unterstützt laut Ollama keine Werkzeuge. "
-                        "Kai kann damit nur chatten, aber nichts am PC tun. Empfohlen: qwen3:8b, qwen3.5 oder gemma4."
+                        "Damit ist nur Chatten möglich, aber keine Aktionen am PC. Empfohlen: qwen3:8b, qwen3.5 oder gemma4."
                     )
             except LLMError:
                 pass
@@ -487,7 +487,7 @@ class OpenAIClient(BaseClient):
 
     def __init__(self, cfg: dict):
         super().__init__(cfg)
-        base = (cfg.get("server_url") or "http://localhost:1234/v1").rstrip("/")
+        base = (cfg.get("server_url") or "http://127.0.0.1:1234/v1").rstrip("/")
         if not re.search(r"/v\d+$", base) and base.count("/") <= 2:
             base += "/v1"  # nur Host angegeben -> Standardpfad ergänzen
         self.base = base

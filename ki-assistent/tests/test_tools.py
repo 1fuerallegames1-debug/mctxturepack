@@ -206,6 +206,11 @@ class RegistryTest(ToolTestBase):
             for req in fn["parameters"]["required"]:
                 self.assertIn(req, fn["parameters"]["properties"])
 
+    def test_describe_shows_paths_without_escaping(self):
+        tool = ToolRegistry().get("list_directory")
+        self.assertEqual(tool.describe({"path": "C:\\Users\\Alex", "show_hidden": True}),
+                         "path=C:\\Users\\Alex, show_hidden=true")
+
     def test_truncate(self):
         text = "A" * 100 + "B" * 100
         out = truncate(text, 50)

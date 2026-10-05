@@ -7,7 +7,16 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Angel">
-<link rel="manifest" href="/manifest.webmanifest">
+<script>
+  // Manifest mit Zugangsschlüssel, damit die App auf dem Startbildschirm (iPhone/Android) ohne neues Scannen startet
+  (function () {
+    var m = location.hash.match(/token=([\w-]+)/), t = m && m[1];
+    try { t = t || localStorage.getItem("angel-token"); } catch (e) {}
+    var l = document.createElement("link"); l.rel = "manifest";
+    l.href = "/manifest.webmanifest" + (t ? "?token=" + encodeURIComponent(t) : "");
+    document.head.appendChild(l);
+  })();
+</script>
 <link rel="icon" type="image/svg+xml" href="/icon.svg">
 <link rel="apple-touch-icon" href="/icon-180.png">
 <title>Angel</title>
@@ -153,7 +162,8 @@ const store = {
 // ---------- Zugangsschlüssel ----------
 (function initToken() {
   const m = location.hash.match(/token=([\w-]+)/);
-  if (m) { store.set("angel-token", m[1]); history.replaceState(null, "", location.pathname); }
+  // Der Schlüssel bleibt in der Adresse (#token=…), damit "Zum Startbildschirm hinzufügen" ihn mitnimmt.
+  if (m) store.set("angel-token", m[1]);
   token = (m && m[1]) || store.get("angel-token") || "";
 })();
 
@@ -162,7 +172,12 @@ class HttpError extends Error { constructor(msg, status) { super(msg); this.stat
 async function api(path, body) {
   const opts = { method: body === undefined ? "GET" : "POST", headers: { "X-Kai-Token": token }, cache: "no-store" };
   if (body !== undefined) { opts.headers["Content-Type"] = "application/json"; opts.body = JSON.stringify(body); }
-  const res = await fetch(path, opts);
+  let res;
+  try { res = await fetch(path, opts); }
+  catch (e) {
+    throw new HttpError("Keine Verbindung zu " + assistantName + ". Läuft am PC noch das schwarze Fenster " +
+                        "(start-web.bat / start-handy.bat)? Ist das Gerät im selben WLAN?", 0);
+  }
   let data = {};
   try { data = await res.json(); } catch (e) {}
   if (res.status === 401) { store.del("angel-token"); }
@@ -269,7 +284,9 @@ function addError(text) { add(div("msg error", text)); }
 function addInfo(text) { add(div("msg info", text)); }
 function setStatus(text) { statusEl.textContent = text || ""; statusEl.hidden = !text; }
 
-function stateLabel(status) { return status === "ok" ? "✓ erledigt" : status === "denied" ? "✗ abgelehnt" : "✗ Fehler"; }
+function stateLabel(status) {
+  return { ok: "✓ erledigt", denied: "✗ abgelehnt", cancelled: "✗ abgebrochen" }[status] || "✗ Fehler";
+}
 function addTool(name, summary, result, status) {
   const d = document.createElement("details");
   d.className = "tool";
@@ -349,11 +366,17 @@ function closeApproval(id, decision) {
 
 // ---------- Ereignisse einer Aufgabe anzeigen ----------
 function makeRenderer(replay) {
-  let bubble = null, bubbleText = "", thinking = null, thinkingText = "";
-  const tools = {};
+  let bubble = null, bubbleText = "", dirty = false, thinking = null, thinkingText = "";
+  const tools = {}, openTools = new Set();
   const endThinking = () => { if (thinking) { thinking.firstChild.textContent = "💭 Gedanken"; thinking = null; } };
-  const finishBubble = () => { if (bubble) bubble.classList.remove("cursor"); bubble = null; bubbleText = ""; };
+  const flush = () => { if (bubble && dirty) { bubble.innerHTML = markdown(bubbleText); dirty = false; scrollDown(); } };
+  const finishBubble = () => { flush(); if (bubble) bubble.classList.remove("cursor"); bubble = null; bubbleText = ""; };
+  const abortOpenTools = () => {
+    openTools.forEach((id) => { const t = tools[id]; t._state.textContent = stateLabel("cancelled"); t._state.className = "state cancelled"; });
+    openTools.clear();
+  };
   return {
+    flush,
     handle(ev) {
       switch (ev.type) {
         case "user": if (replay) addUser(ev.text); break;
@@ -366,14 +389,15 @@ function makeRenderer(replay) {
         case "text":
           endThinking();
           if (!bubble) { bubble = addAssistant(""); bubble.classList.add("cursor"); }
-          bubbleText += ev.text; bubble.innerHTML = markdown(bubbleText); scrollDown(); break;
+          bubbleText += ev.text; dirty = true; break;   // gezeichnet wird einmal pro Paket (flush)
         case "assistant":
           endThinking(); finishBubble();
           if (!replay) speak(ev.content);
           break;
-        case "tool_start": tools[ev.id] = addTool(ev.name, ev.summary, "", null); break;
+        case "tool_start": finishBubble(); tools[ev.id] = addTool(ev.name, ev.summary, "", null); openTools.add(ev.id); break;
         case "tool_result": {
           const t = tools[ev.id] || addTool(ev.name, "", "", null);
+          openTools.delete(ev.id);
           t._state.textContent = stateLabel(ev.status); t._state.className = "state " + ev.status;
           t._result.textContent = ev.result; t._result.hidden = !ev.result; scrollDown(); break;
         }
@@ -381,11 +405,11 @@ function makeRenderer(replay) {
         case "approval_done": closeApproval(ev.approval_id, ev.decision); break;
         case "error": finishBubble(); addError(ev.message); break;
         case "info": addInfo(ev.message); break;
-        case "cancelled": finishBubble(); addInfo("Abgebrochen."); break;
+        case "cancelled": finishBubble(); abortOpenTools(); addInfo("Abgebrochen."); break;
       }
     },
     finish() {
-      endThinking(); finishBubble();
+      endThinking(); finishBubble(); abortOpenTools();
       Object.keys(approvals).forEach((id) => closeApproval(id, "no"));
     },
   };
@@ -414,6 +438,7 @@ async function follow(runId, replay) {
         continue;
       }
       for (const ev of data.events) renderer.handle(ev);
+      renderer.flush();
       currentRun.since = data.next;
       if (data.done) break;
     }
@@ -422,6 +447,19 @@ async function follow(runId, replay) {
     if (currentRun && currentRun.id === runId) { currentRun = null; setBusy(false); setStatus(""); }
   }
 }
+
+// Läuft gerade eine Aufgabe (z. B. am PC gestartet), die diese Seite noch nicht anzeigt? Dann anzeigen.
+async function attachIfRunning() {
+  if (!token || currentRun) return;
+  try {
+    const st = await api("/api/status");
+    if (st.run && !st.run.done && !currentRun) {
+      addInfo("Eine Aufgabe läuft gerade – sie wird hier angezeigt.");
+      follow(st.run.id, true);
+    }
+  } catch (e) {}
+}
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") attachIfRunning(); });
 
 // ---------- Senden ----------
 function setBusy(b) {
@@ -436,15 +474,22 @@ async function send() {
   if (!text) return;
   if ("speechSynthesis" in window) speechSynthesis.cancel();
   input.value = ""; autosize();
-  addUser(text);
+  const bubble = add(div("msg user", text));
   setBusy(true);
+  let r;
   try {
-    const r = await api("/api/chat", { text });
-    await follow(r.run, false);
+    r = await api("/api/chat", { text });
   } catch (e) {
     setBusy(false);
-    if (e.status === 401) showNoToken();
-    else { addError(e.message || String(e)); if (e.status === 409 && !input.value) { input.value = text; autosize(); } }
+    if (e.status === 401) { showNoToken(); return; }
+    bubble.remove();
+    if (!input.value) { input.value = text; autosize(); }   // Text nicht verlieren
+    addError(e.message || String(e));
+    if (e.status === 409) attachIfRunning();                 // auf einem anderen Gerät gestartete Aufgabe anzeigen
+    return;
+  }
+  try {
+    await follow(r.run, false);
   } finally {
     if (!isTouch) input.focus();
   }

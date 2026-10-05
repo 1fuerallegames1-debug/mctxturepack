@@ -161,6 +161,29 @@ class LocalWebTest(WebTest):
         self.assertEqual(self.json("POST", "/api/settings", {"model": "gibtsnicht"})[0], 400)
         self.assertEqual(self.json("GET", "/api/models")[1]["models"], ["test:latest"])
 
+    def test_manifest_contains_token_only_for_token_holders(self):
+        resp = self.request("GET", "/manifest.webmanifest?token=geheim-schluessel-1234567890", token=None)
+        self.assertEqual(json.loads(resp.read())["start_url"], "/#token=geheim-schluessel-1234567890")
+        for query in ("", "?token=falsch"):
+            resp = self.request("GET", "/manifest.webmanifest" + query, token=None)
+            self.assertEqual(json.loads(resp.read())["start_url"], "/")
+
+    def test_history_shows_stopped_and_refused_tools_correctly(self):
+        from kai.agent import NOT_RUN_NOTE
+        from kai.regeln import PROTECTED_MESSAGE
+        self.agent.history = [
+            {"role": "user", "content": "x"},
+            {"role": "assistant", "content": "", "tool_calls": [
+                {"id": "a", "name": "run_command", "arguments": {"command": "dir"}},
+                {"id": "b", "name": "write_file", "arguments": {"path": "C:\\x", "content": "y"}},
+                {"id": "c", "name": "run_command", "arguments": {"command": "false"}}]},
+            {"role": "tool", "tool_call_id": "a", "name": "run_command", "content": NOT_RUN_NOTE},
+            {"role": "tool", "tool_call_id": "b", "name": "write_file", "content": PROTECTED_MESSAGE},
+            {"role": "tool", "tool_call_id": "c", "name": "run_command", "content": "Exit-Code: 1\n(keine Ausgabe)"},
+        ]
+        items = self.json("GET", "/api/history")[1]["items"]
+        self.assertEqual([i.get("status") for i in items if i["role"] == "tool"], ["cancelled", "error", "error"])
+
     def test_pairing_disabled_locally(self):
         self.assertEqual(self.json("GET", "/api/pairing")[1], {"enabled": False})
 

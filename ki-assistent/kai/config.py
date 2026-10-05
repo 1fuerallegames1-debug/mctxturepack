@@ -21,7 +21,7 @@ DEFAULTS = {
     # (= jeder OpenAI-kompatible lokale Server, z. B. LM Studio oder llama.cpp)
     "anbieter": "ollama",
     "modell": "qwen3:8b",
-    "server_url": "http://localhost:11434",
+    "server_url": "http://127.0.0.1:11434",
     "api_schluessel": "",
     # Wie viele Tokens das Modell auf einmal "im Kopf" behält.
     # Mehr = besseres Gedächtnis im Gespräch, braucht aber mehr (Grafik-)Speicher.

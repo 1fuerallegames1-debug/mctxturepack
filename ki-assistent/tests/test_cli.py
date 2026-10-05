@@ -57,6 +57,25 @@ class CliTest(TempDirTest):
         self.assertNotIn("[i] immer", chat.text.split("ACHTUNG")[1].split("\n")[1])
         self.assertIn("abgelehnt", chat.text)
 
+    def test_ctrl_c_during_approval_cancels(self):
+        agent = self.make([reply(tool_calls=[("write_file", {"path": "nein.txt", "content": "x"})]), reply("x")])
+
+        class Interrupting(ScriptedChat):
+            def ask(self, prompt):
+                if "Erlauben" in prompt:
+                    raise KeyboardInterrupt
+                return super().ask(prompt)
+
+        chat = Interrupting(agent, ["Schreib was", "/beenden"])
+        self.assertEqual(chat.loop(), 0)
+        self.assertFalse((self.work / "nein.txt").exists())
+        self.assertIn("Abgebrochen", chat.text)
+        self.assertEqual(agent.history[-1]["content"], "Aborted by the user before it ran.")
+
+    def test_windows_line_endings_are_not_shown_as_codes(self):
+        from kai.cli import safe
+        self.assertEqual(safe("a\r\nb\x1b[31m"), "a\nb\\x1b[31m")
+
     def test_missing_model_can_be_downloaded(self):
         agent = self.make(models=["anderes:latest"], modell="qwen3:8b")
         chat = ScriptedChat(agent, ["j"])

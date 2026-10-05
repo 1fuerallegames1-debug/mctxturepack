@@ -81,7 +81,9 @@ class Tool:
                 return self.summary(args)
             except Exception:
                 pass
-        return ", ".join(f"{k}={json.dumps(v, ensure_ascii=False)}" for k, v in args.items())
+        # Texte ohne JSON-Escaping zeigen (sonst erscheinen Windows-Pfade mit doppelten \\)
+        return ", ".join(f"{k}={v}" if isinstance(v, str) else f"{k}={json.dumps(v, ensure_ascii=False)}"
+                         for k, v in args.items())
 
 
 def tool(name: str, description: str, parameters: dict | None = None, required=(),

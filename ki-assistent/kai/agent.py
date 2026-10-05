@@ -13,6 +13,7 @@ import datetime as _dt
 import getpass
 import json
 import os
+import re
 from pathlib import Path
 from typing import Callable, Iterator
 
@@ -32,6 +33,7 @@ DANGER_WARNINGS = {
     "run_command": "ACHTUNG: Dieser Befehl kann Daten löschen oder das System verändern!",
     "run_python": "ACHTUNG: Dieser Code löscht Dateien oder startet andere Programme!",
 }
+FAILED_EXIT = re.compile(r"^Exit-Code: (?!0$)", re.M)
 # Werkzeuge, deren Ergebnis keine fremden Inhalte enthält
 TRUSTED_TOOLS = {"remember", "forget", "system_info"}
 
@@ -399,6 +401,8 @@ class Agent:
             self._interrupted_call = call["id"]
             raise
         result = truncate(result, int(self.cfg.get("max_ausgabe_zeichen") or 8000) * 2)
+        if status == "ok" and FAILED_EXIT.search(result):
+            status = "error"  # Befehl lief, ist aber fehlgeschlagen (Exit-Code ungleich 0)
         if name not in TRUSTED_TOOLS:
             self.ctx.untrusted_seen = True
         return result, status, result

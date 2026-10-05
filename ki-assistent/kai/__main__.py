@@ -46,7 +46,7 @@ def main(argv=None) -> int:
     phone = args.handy or (args.web and bool(cfg.get("handy_zugriff")))
     if args.web or args.handy:
         from .web import run_web
-        if not TerminalChat(agent).startup_check():
+        if not TerminalChat(agent).startup_check(web=True):
             return 1
         return run_web(agent, open_browser=cfg.get("browser_oeffnen", True) and not args.kein_browser,
                        port=args.port, phone=phone, renew_token=args.neuer_schluessel)

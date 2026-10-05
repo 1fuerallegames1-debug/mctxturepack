@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import os
+import queue
 import re
 import shutil
 import sys
 import textwrap
+import threading
 
 from . import __version__
 from .agent import Agent
@@ -33,7 +35,8 @@ _CONTROL = re.compile(r"[\x00-\x08\x0b-\x1f\x7f\x9b]")
 
 def safe(text: str) -> str:
     """Steuerzeichen sichtbar machen, damit Ausgaben das Terminal nicht manipulieren können."""
-    return _CONTROL.sub(lambda m: f"\\x{ord(m.group()):02x}", text or "")
+    text = (text or "").replace("\r\n", "\n").replace("\r", "\n")  # Windows-Zeilenenden
+    return _CONTROL.sub(lambda m: f"\\x{ord(m.group()):02x}", text)
 
 
 class Style:
@@ -71,7 +74,7 @@ def _enable_ansi() -> bool:
 class TerminalChat:
     def __init__(self, agent: Agent):
         self.agent = agent
-        self.name = agent.cfg.get("name") or "Kai"
+        self.name = agent.cfg.get("name") or "Angel"
         self.s = Style(_enable_ansi())
         self.width = max(40, min(shutil.get_terminal_size((100, 20)).columns, 120))
 
@@ -89,7 +92,7 @@ class TerminalChat:
 
     # -------------------------------------------------------------- Start
 
-    def startup_check(self) -> bool:
+    def startup_check(self, web: bool = False) -> bool:
         s, agent = self.s, self.agent
         self.out(f"{s.bold}{s.cyan}{self.name}{s.reset} – dein lokaler KI-Assistent  {s.dim}(v{__version__}){s.reset}")
         for err in agent.plugin_errors:
@@ -98,7 +101,7 @@ class TerminalChat:
             info = agent.client.check()
         except LLMError as e:
             self.out(f"\n{s.red}{e}{s.reset}")
-            self.out("\nSo geht's: Ollama von https://ollama.com/download installieren, starten und Kai neu öffnen.")
+            self.out(f"\nSo geht's: Ollama von https://ollama.com/download installieren, starten und {self.name} neu öffnen.")
             return False
         if not info["installed"]:
             if not self._handle_missing_model(info["models"]):
@@ -109,11 +112,13 @@ class TerminalChat:
             self.out(f"{s.yellow}{agent.context_warning()}{s.reset}")
         mode = (f"{s.red}automatisch (ohne Nachfrage){s.reset}" if agent.auto_mode
                 else f"{s.green}mit Nachfrage{s.reset}")
-        self.out(f"Modell: {s.bold}{agent.client.model}{s.reset}  |  Aktionen: {mode}  |  /hilfe für Befehle")
+        self.out(f"Modell: {s.bold}{agent.client.model}{s.reset}  |  Aktionen: {mode}"
+                 + ("" if web else "  |  /hilfe für Befehle"))
         self.out(f"{s.dim}Grundregeln aktiv: 1. Dein Wort ist Gesetz  2. Kein körperlicher Schaden für Menschen  "
-                 f"3. Unveränderlich  (/regeln){s.reset}")
+                 f"3. Unveränderlich" + ("" if web else "  (/regeln)") + s.reset)
         if agent.auto_mode:
-            self.out(f"{s.red}Achtung: Kai führt Befehle ohne Rückfrage aus. Mit /auto aus wieder einschalten.{s.reset}")
+            self.out(f"{s.red}Achtung: {self.name} führt Befehle ohne Rückfrage aus"
+                     + ("." if web else f". Mit /auto aus fragt {self.name} wieder nach.") + s.reset)
         return True
 
     def _handle_missing_model(self, models: list[str]) -> bool:
@@ -132,7 +137,7 @@ class TerminalChat:
             if choice.isdigit() and 1 <= int(choice) <= len(models):
                 self._switch_model(models[int(choice) - 1], check=False)
                 return True
-        self.out(f"Tipp: im Terminal 'ollama pull {model}' ausführen und Kai neu starten.")
+        self.out(f"Tipp: im Terminal 'ollama pull {model}' ausführen und {self.name} neu starten.")
         return False
 
     def _pull(self, model: str) -> bool:
@@ -280,48 +285,94 @@ class TerminalChat:
                     self.out(s.reset)
                 state["thinking_shown"] = False
 
-        try:
-            for ev in self.agent.run(text, self.approve_hook(close_text)):
-                t = ev["type"]
-                if t == "thinking":
-                    if self.agent.cfg.get("denken_anzeigen"):
-                        if not state["thinking_shown"]:
-                            close_text()
-                            self.out(f"{s.dim}", end="")
-                            state["thinking_shown"] = True
-                        self.out(ev["text"], end="")
-                    elif not state["thinking_shown"]:
-                        self.out(f"{s.dim}  … denkt nach …{s.reset}", end="")
+        def render(ev: dict):
+            t = ev["type"]
+            if t == "thinking":
+                if self.agent.cfg.get("denken_anzeigen"):
+                    if not state["thinking_shown"]:
+                        close_text()
+                        self.out(f"{s.dim}", end="")
                         state["thinking_shown"] = True
-                elif t == "text":
-                    if state["thinking_shown"] and self.agent.cfg.get("denken_anzeigen"):
-                        self.out(s.reset)
-                        state["thinking_shown"] = False
-                    open_text()
-                    self.out(safe(ev["text"]).replace("\\x0a", "\n"), end="")
-                elif t == "assistant":
-                    close_text()
-                elif t == "tool_start":
-                    close_text()
-                    summary = safe(ev["summary"].splitlines()[0]) if ev["summary"] else ""
-                    self.out(f"{s.magenta}  ⚙ {ev['name']}{s.reset} {s.dim}{summary[:self.width - 10]}{s.reset}")
-                elif t == "tool_result":
-                    self._show_result(ev)
-                elif t == "info":
-                    close_text()
-                    self.out(f"{s.dim}{ev['message']}{s.reset}")
-                elif t == "error":
-                    close_text()
-                    self.out(f"{s.red}{ev['message']}{s.reset}")
-                elif t == "cancelled":
-                    close_text()
-                    self.out(f"{s.yellow}Abgebrochen.{s.reset}")
-                elif t == "done":
-                    close_text()
+                    self.out(safe(ev["text"]), end="")
+                elif not state["thinking_shown"]:
+                    self.out(f"{s.dim}  … denkt nach …{s.reset}", end="")
+                    state["thinking_shown"] = True
+            elif t == "text":
+                if state["thinking_shown"] and self.agent.cfg.get("denken_anzeigen"):
+                    self.out(s.reset)
+                    state["thinking_shown"] = False
+                open_text()
+                self.out(safe(ev["text"]), end="")
+            elif t in ("assistant", "done"):
+                close_text()
+            elif t == "tool_start":
+                close_text()
+                # die ersten zwei Zeilen, damit z. B. der eigentliche Befehl sichtbar ist
+                summary = " · ".join(safe(ev["summary"]).splitlines()[:2]) if ev["summary"] else ""
+                self.out(f"{s.magenta}  ⚙ {ev['name']}{s.reset} {s.dim}{summary[:self.width - 10]}{s.reset}")
+            elif t == "tool_result":
+                self._show_result(ev)
+            elif t == "info":
+                close_text()
+                self.out(f"{s.dim}{ev['message']}{s.reset}")
+            elif t == "error":
+                close_text()
+                self.out(f"{s.red}{ev['message']}{s.reset}")
+            elif t == "cancelled":
+                close_text()
+                self.out(f"{s.yellow}Abgebrochen.{s.reset}")
+
+        # Die Aufgabe läuft in einem eigenen Thread. So reagiert Strg+C sofort – auch unter Windows,
+        # während das Modell noch rechnet. Nachfragen werden hier im Haupt-Thread beantwortet.
+        events: queue.Queue = queue.Queue()
+
+        def approve_in_main_thread(req: dict) -> str:
+            reply: queue.Queue = queue.Queue(maxsize=1)
+            events.put(("approve", req, reply))
+            return reply.get()
+
+        def worker():
+            try:
+                for ev in self.agent.run(text, approve_in_main_thread):
+                    events.put(("event", ev, None))
+            except BaseException as e:  # sollte nicht passieren – trotzdem nicht stumm abstürzen
+                events.put(("event", {"type": "error", "message": f"Interner Fehler: {e}"}, None))
+            finally:
+                events.put(("end", None, None))
+
+        threading.Thread(target=worker, daemon=True, name="aufgabe").start()
+        approve = self.approve_hook(close_text)
+        pending_reply = None
+        try:
+            while True:
+                try:
+                    kind, payload, reply = events.get(timeout=0.2)
+                except queue.Empty:
+                    continue
+                if kind == "end":
+                    break
+                if kind == "approve":
+                    pending_reply = reply
+                    reply.put(approve(payload))
+                    pending_reply = None
+                else:
+                    render(payload)
         except KeyboardInterrupt:
             self.agent.cancel()
+            if pending_reply is not None and pending_reply.empty():
+                pending_reply.put("no")
             close_text()
-            self.out(f"\n{s.yellow}Abgebrochen.{s.reset}")
+            self.out(f"\n{s.yellow}Wird abgebrochen …{s.reset}")
+            try:  # auf das saubere Ende der Aufgabe warten (offene Nachfragen ablehnen)
+                while True:
+                    kind, payload, reply = events.get(timeout=30)
+                    if kind == "end":
+                        break
+                    if kind == "approve":
+                        reply.put("no")
+            except (queue.Empty, KeyboardInterrupt):
+                pass
+            self.out(f"{s.yellow}Abgebrochen.{s.reset}")
 
     def _show_result(self, ev: dict):
         s = self.s
