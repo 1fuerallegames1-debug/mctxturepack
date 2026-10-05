@@ -23,6 +23,8 @@
   "websuche": { "anbieter": "duckduckgo", "searxng_url": "" },
   "oberflaeche": "fenster",
   "sprachsteuerung": { "aktiv": true, "automatisch_senden": false },
+  "google": { "aktiv": false, "client_id": "", "client_secret": "" },
+  "browser": { "aktiv": false, "sichtbar": true },
 
   "zusatz_anweisungen": "",
 

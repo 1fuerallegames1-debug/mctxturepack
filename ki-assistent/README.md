@@ -39,6 +39,8 @@ kritischen Aktionen vorher nach (siehe [Sicherheit](#sicherheit-wann-angel-nachf
 | Im Internet suchen und Webseiten lesen | `web_search`, `fetch_webpage` | nur unbekannte Adressen |
 | PC-Infos: Datum, Speicher, RAM, Ordner | `system_info` | nein |
 | Dauerhaft merken / vergessen | `remember`, `forget` | nur nach fremden Inhalten |
+| **Google**: Gmail, Kalender, Drive, Kontakte, Tasks | `gmail_*`, `calendar_*`, `drive_*`, `contacts_*`, `tasks_*` | lesen nein · **senden/löschen/teilen immer** |
+| **Browser**: Webseiten öffnen, klicken, tippen | `browser_*` | öffnen/lesen nein · klicken/tippen nur in „nachfragen“ |
 | **Discord**: lesen, schreiben, Kanäle/Rollen, Moderation | `discord_*` | posten/anlegen nein · **löschen/kicken/bannen immer** |
 
 Mit [eigenen Plugins](#eigene-fähigkeiten-plugins) kannst du Angel beliebig erweitern.
@@ -172,6 +174,63 @@ Befehle.
 
 ---
 
+## Google-Konto
+
+Angel greift über die **offizielle Google-Anmeldung (OAuth)** auf dein Konto zu. Dein Passwort wird nie
+in Angel gespeichert; du meldest dich einmal bei Google an und erlaubst den Zugriff. Widerrufen kannst du
+ihn jederzeit unter <https://myaccount.google.com/permissions>.
+
+**Was Angel dann kann:** Gmail lesen/suchen/zusammenfassen und **senden**; Kalender anzeigen und Termine
+anlegen/löschen; Drive-Dateien suchen, lesen, hochladen, löschen, teilen; Kontakte nachschlagen; Google
+Tasks verwalten. **Lesen läuft frei**; **E-Mail senden, Löschen, Teilen und Hochladen bestätigst du immer
+per Knopf** – auch im Automatik-Modus.
+
+### Einrichten (einmalig, ~10 Minuten)
+1. <https://console.cloud.google.com/> öffnen → oben ein **neues Projekt** anlegen.
+2. **APIs aktivieren** (Suche oben, je „Enable“): *Gmail API*, *Google Calendar API*, *Google Drive API*,
+   *People API*, *Tasks API*.
+3. **OAuth-Zustimmungsbildschirm** (APIs & Dienste → OAuth consent screen): Typ **Extern**, App-Name
+   „Angel“, deine E-Mail als Support/Developer. Unter **Testnutzer** deine eigene Gmail-Adresse eintragen
+   (so brauchst du keine Google-Prüfung).
+4. **Anmeldedaten** (APIs & Dienste → Anmeldedaten → *Anmeldedaten erstellen* → **OAuth-Client-ID** →
+   Anwendungstyp **Desktop-App**). Du bekommst **Client-ID** und **Client-Secret**.
+5. In `config.json` eintragen und einschalten:
+   ```json
+   "google": { "aktiv": true, "client_id": "DEINE-CLIENT-ID", "client_secret": "DEIN-SECRET" }
+   ```
+6. Einmal anmelden: Doppelklick auf `start-terminal.bat` ist nicht nötig – öffne die Eingabeaufforderung
+   im Ordner `ki-assistent` und führe aus:
+   ```
+   py -3 -m angel --google-anmelden
+   ```
+   Der Browser öffnet sich, du meldest dich an und erlaubst den Zugriff. Fertig. Danach Angel normal starten.
+
+Dann kannst du z. B. sagen: „Fasse meine ungelesenen Mails zusammen.“ · „Schreib Oma eine Mail, dass ich
+Sonntag komme.“ · „Was steht morgen im Kalender?“ · „Leg Dienstag 15 Uhr ‚Zahnarzt‘ an.“ · „Such in Drive
+nach ‚Zeugnis‘ und lies es vor.“ · „Setz ‚Mülltonne rausstellen‘ auf meine Aufgabenliste.“
+
+---
+
+## Browser
+
+Angel steuert ein **eigenes Browserfenster**, getrennt von deinem normalen Chrome. Dort kann sie Seiten
+öffnen, Text lesen, Links folgen, klicken und in Felder tippen – auch auf Seiten, wo du dich **in Angels
+Browser** einmal anmeldest (Logins bleiben in `daten/browser-profil` erhalten). Für reines Lesen reicht
+schon `fetch_webpage`; der Browser ist für Seiten, die Klicken/Anmelden brauchen.
+
+### Einrichten (einmalig)
+```
+pip install playwright
+python -m playwright install chromium
+```
+Dann in `config.json`: `"browser": { "aktiv": true, "sichtbar": true }` und Angel neu starten.
+
+**Sicherheit:** Öffnen und Lesen laufen frei; **Klicken und Tippen** fragt Angel im Modus „nachfragen“
+vorher. Angel ist angewiesen, im Netz **nichts zu kaufen, zu bezahlen oder abzusenden**, außer du
+verlangst es. Im Automatik-Modus laufen auch Klicks ohne Nachfrage – überlege dir das gut.
+
+---
+
 ## Welches Modell passt zu meinem PC?
 
 Wie viel Grafikspeicher (VRAM) du hast, zeigt der Task-Manager → Leistung → GPU.
@@ -204,6 +263,8 @@ Pfaden `\` doppelt schreiben (`"D:\\Server"`) oder `/` verwenden.
 | `bestaetigung` | `"nachfragen"` oder `"automatisch"` (siehe Sicherheit) | `"nachfragen"` |
 | `oberflaeche` | `"fenster"` (PC-Programm) oder `"terminal"` | `"fenster"` |
 | `sprachsteuerung` | `{ "aktiv": true, "automatisch_senden": false }` | an |
+| `google` | Google-Konto (siehe oben) | aus |
+| `browser` | eigenes Browserfenster (siehe oben) | aus |
 | `discord` | Discord-Bot (siehe oben) | aus |
 | `immer_erlauben` | Werkzeuge, die nie nachfragen, z. B. `["open_item"]` | `[]` |
 | `deaktivierte_werkzeuge` | Werkzeuge abschalten, z. B. `["run_python"]` | `[]` |
@@ -264,6 +325,9 @@ ein.
 | Discord: „Token abgelehnt (401)“ | `bot_token` prüfen/neu erzeugen (Developer Portal → Bot → Reset Token). |
 | Discord: „Rechte fehlen (403)“ | Dem Bot die nötige Berechtigung/Rolle geben; seine Rolle muss über der des Ziels stehen. |
 | Discord: Mitglieder werden nicht gefunden | Im Developer Portal die **Server Members Intent** einschalten. |
+| Google: „noch nicht angemeldet“ | `py -3 -m angel --google-anmelden` ausführen und Zugriff erlauben; in config.json `google.aktiv` auf true. |
+| Google: „Zugriff verweigert / Scope“ | `daten/google_token.json` löschen und neu anmelden, dabei alle Haken bestätigen. |
+| Browser: „Playwright fehlt“ | `pip install playwright` und `python -m playwright install chromium`. |
 | „Angels Programmkern hat sich geändert“ | Nach einem Update normal. Hast du nichts geändert, prüfe den Ordner `angel`. |
 
 ---
@@ -279,7 +343,7 @@ ein.
 
 ## Für Bastler
 
-- **Nur Standardbibliothek** (Python 3.9+); zusätzlich optional `vosk` + `sounddevice` für die Sprache.
+- **Nur Standardbibliothek** (Python 3.9+); zusätzlich optional `vosk` + `sounddevice` (Sprache) und `playwright` (Browser).
 - **Tests:** `python -m unittest discover -s tests -t .` (simuliert KI- und Discord-Server; Ollama,
   Discord, Fenster und Mikrofon werden dafür nicht gebraucht).
 - **Aufbau:**
@@ -298,6 +362,8 @@ ki-assistent/
     ├── voice.py         Offline-Spracherkennung (Vosk)
     ├── cli.py           das Textfenster
     ├── discord_api.py   Discord-Zugriff (REST)
+    ├── google_api.py    Google-Zugriff (OAuth + REST)
+    ├── browser.py       eigenes Browserfenster (Playwright)
     ├── icons.py         App-Symbol
     ├── config.py        Einstellungen
     └── tools/           eingebaute Werkzeuge (system, files, web, memory)

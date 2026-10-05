@@ -56,6 +56,17 @@ DEFAULTS = {
     },
     # Eigene Zusatz-Anweisungen an die KI (Persönlichkeit, Regeln, Wissen über dich ...)
     "zusatz_anweisungen": "",
+    # Google-Konto (optional). Einrichtung siehe README, Abschnitt "Google".
+    "google": {
+        "aktiv": False,
+        "client_id": "",        # aus deinem Google-Cloud-Projekt (OAuth, Desktop-App)
+        "client_secret": "",
+    },
+    # Eigenes, automatisiertes Browserfenster (optional). Einrichtung siehe README, Abschnitt "Browser".
+    "browser": {
+        "aktiv": False,
+        "sichtbar": True,       # true = Fenster sichtbar, false = im Hintergrund
+    },
     # Discord-Bot (optional). Einrichtung siehe README, Abschnitt "Discord".
     "discord": {
         "aktiv": False,

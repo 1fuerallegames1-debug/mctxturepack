@@ -86,6 +86,26 @@ def _discord_prompt(cfg) -> str:
             "that post, change the server, or affect people are shown to your owner for approval first.")
 
 
+def _google_prompt(cfg) -> str:
+    if not (cfg.get("google") or {}).get("aktiv"):
+        return ""
+    return ("## Google account\n"
+            "Your owner connected their Google account. Use the gmail_*, calendar_*, drive_*, contacts_* and "
+            "tasks_* tools to help with their mail, calendar, files, contacts and to-dos. Reading is free; "
+            "sending email, deleting, sharing and uploading are shown to your owner for approval first. Never "
+            "send or delete anything your owner did not ask for.")
+
+
+def _browser_prompt(cfg) -> str:
+    if not (cfg.get("browser") or {}).get("aktiv"):
+        return ""
+    return ("## Web browser\n"
+            "You can drive a real browser window with the browser_* tools: open a page, read its text, click, "
+            "type and follow links - also on sites where your owner is logged in. Use it when reading a page "
+            "(fetch_webpage) is not enough, e.g. for interactive sites. Think before you click: never buy, pay, "
+            "post or send anything unless your owner clearly asked for it, and ask first when unsure.")
+
+
 def gender_rule(setting) -> str:
     value = (setting or "weiblich").strip().lower()
     if value in ("weiblich", "female", "sie", "w"):
@@ -103,10 +123,12 @@ class Agent:
         self.plugin_errors = [] if registry is not None else load_plugins(PROJECT_DIR / "plugins")
         self.client = client or make_client(cfg)
         self.registry = registry or ToolRegistry(disabled=cfg.get("deaktivierte_werkzeuge") or [])
-        if not (cfg.get("discord") or {}).get("aktiv"):
-            # Discord-Werkzeuge nur anbieten, wenn Discord eingerichtet ist
-            for n in [n for n in list(self.registry.tools) if n.startswith("discord_")]:
-                self.registry.tools.pop(n, None)
+        # Zusatz-Werkzeuge nur anbieten, wenn der jeweilige Dienst eingerichtet ist
+        for key, prefixes in (("discord", ("discord_",)), ("browser", ("browser_",)),
+                              ("google", ("gmail_", "calendar_", "drive_", "contacts_", "tasks_"))):
+            if not (cfg.get(key) or {}).get("aktiv"):
+                for n in [n for n in list(self.registry.tools) if n.startswith(prefixes)]:
+                    self.registry.tools.pop(n, None)
         self.memory = memory or Memory(data / "gedaechtnis.json")
         if getattr(self.memory, "warning", ""):
             self.plugin_errors.append(self.memory.warning)  # wird beim Start angezeigt
@@ -208,9 +230,9 @@ class Agent:
                       "'cmd', 'explorer') or a full path to an .exe. For files and folders, prefer find_files and open_item.",
                       "- Windows 11 specifics: right-click gives a compact menu ('Show more options' for the full one); "
                       "the Start menu and search are opened with the Windows key; drives are C:, D: etc."]
-        disc = _discord_prompt(cfg)
-        if disc:
-            lines += ["", disc]
+        for block in (_discord_prompt(cfg), _google_prompt(cfg), _browser_prompt(cfg)):
+            if block:
+                lines += ["", block]
         weekday = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")[today.weekday()]
         lines.append(f"- Today is {weekday}, {today:%d.%m.%Y} (day.month.year). "
                      "Use system_info for the current time.")

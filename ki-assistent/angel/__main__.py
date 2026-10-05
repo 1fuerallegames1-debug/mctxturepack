@@ -17,6 +17,8 @@ def main(argv=None) -> int:
     parser.add_argument("--terminal", "--text", dest="terminal", action="store_true",
                         help="im schwarzen Textfenster statt im eigenen Fenster starten")
     parser.add_argument("--modell", "--model", dest="modell", help="KI-Modell für diese Sitzung (z. B. qwen3:8b)")
+    parser.add_argument("--google-anmelden", dest="google_login", action="store_true",
+                        help="einmalig bei Google anmelden (öffnet den Browser)")
     parser.add_argument("--version", action="version", version=f"Angel {__version__}")
     args = parser.parse_args(argv)
 
@@ -27,6 +29,9 @@ def main(argv=None) -> int:
         return 1
     if args.modell:
         cfg["modell"] = args.modell
+
+    if args.google_login:
+        return _google_login(cfg)
 
     from .agent import Agent
     from .cli import TerminalChat, run_cli
@@ -52,6 +57,26 @@ def main(argv=None) -> int:
             return run_cli(agent)
         return run_gui(agent)
     return run_cli(agent)
+
+
+def _google_login(cfg) -> int:
+    from pathlib import Path
+
+    from .config import data_dir
+    from .google_api import GoogleClient, GoogleError, login
+    g = cfg.get("google") or {}
+    if not g.get("client_id") or not g.get("client_secret"):
+        print("Es fehlen client_id und client_secret in config.json (siehe README, Abschnitt 'Google').")
+        return 1
+    client = GoogleClient(g["client_id"], g["client_secret"], Path(data_dir()) / "google_token.json")
+    try:
+        email = login(client, g)
+    except GoogleError as e:
+        print(f"\nAnmeldung fehlgeschlagen: {e}")
+        return 1
+    print(f"\nFertig! Angel ist jetzt mit Google verbunden{(' (' + email + ')') if email else ''}.")
+    print("Denk daran, in config.json  google → aktiv  auf true zu setzen.")
+    return 0
 
 
 if __name__ == "__main__":
