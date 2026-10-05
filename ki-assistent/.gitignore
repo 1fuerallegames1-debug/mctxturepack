@@ -1,0 +1,6 @@
+# Persönliche Daten und Einstellungen nicht ins Git-Repository hochladen
+config.json
+config.tmp
+daten/
+__pycache__/
+*.pyc

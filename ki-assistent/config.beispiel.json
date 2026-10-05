@@ -1,0 +1,26 @@
+{
+  "_hinweis": "Deine Einstellungen. Erklärung aller Werte: siehe README.md (Abschnitt 'Einstellungen').",
+  "name": "Kai",
+  "dein_name": "",
+  "sprache": "Deutsch",
+
+  "anbieter": "ollama",
+  "modell": "qwen3:8b",
+  "server_url": "http://localhost:11434",
+  "kontext_laenge": 16384,
+  "temperatur": 0.6,
+  "denken": null,
+  "denken_anzeigen": false,
+
+  "bestaetigung": "nachfragen",
+  "immer_erlauben": [],
+  "deaktivierte_werkzeuge": [],
+  "max_schritte": 25,
+  "befehl_timeout": 120,
+  "arbeitsordner": "",
+
+  "websuche": { "anbieter": "duckduckgo", "searxng_url": "" },
+  "web_port": 8765,
+
+  "zusatz_anweisungen": ""
+}

@@ -1,0 +1,361 @@
+"""Chat im Terminal / in der Eingabeaufforderung."""
+
+from __future__ import annotations
+
+import os
+import shutil
+import sys
+import textwrap
+
+from . import __version__
+from .agent import Agent
+from .config import save_setting
+from .llm import LLMError, OllamaClient
+
+HELP = """\
+Befehle:
+  /hilfe              diese Hilfe
+  /neu                neues Gespräch beginnen (Gedächtnis bleibt)
+  /modelle            installierte Modelle anzeigen
+  /modell <name>      anderes Modell verwenden (z. B. /modell qwen3:8b)
+  /gedaechtnis        anzeigen, was sich {name} gemerkt hat
+  /vergiss <nr>       einen gemerkten Eintrag löschen
+  /auto an|aus        Aktionen ohne Nachfrage ausführen (Vorsicht!) / wieder nachfragen
+  /beenden            {name} beenden (oder Strg+C)
+Während {name} arbeitet, bricht Strg+C die aktuelle Aufgabe ab."""
+
+
+class Style:
+    def __init__(self, enabled: bool):
+        e = enabled
+        self.reset = "\033[0m" if e else ""
+        self.dim = "\033[2m" if e else ""
+        self.bold = "\033[1m" if e else ""
+        self.cyan = "\033[36m" if e else ""
+        self.green = "\033[32m" if e else ""
+        self.yellow = "\033[33m" if e else ""
+        self.red = "\033[31m" if e else ""
+        self.magenta = "\033[35m" if e else ""
+        self.clear_line = "\r\033[K" if e else "\r"
+
+
+def _enable_ansi() -> bool:
+    if os.environ.get("NO_COLOR") or not sys.stdout.isatty():
+        return False
+    if os.name != "nt":
+        return True
+    try:
+        import ctypes
+        kernel = ctypes.windll.kernel32
+        handle = kernel.GetStdHandle(-11)
+        mode = ctypes.c_uint32()
+        if kernel.GetConsoleMode(handle, ctypes.byref(mode)):
+            kernel.SetConsoleMode(handle, mode.value | 0x0004)  # ENABLE_VIRTUAL_TERMINAL_PROCESSING
+            return True
+    except Exception:
+        pass
+    return False
+
+
+class TerminalChat:
+    def __init__(self, agent: Agent):
+        self.agent = agent
+        self.name = agent.cfg.get("name") or "Kai"
+        self.s = Style(_enable_ansi())
+        self.width = max(40, min(shutil.get_terminal_size((100, 20)).columns, 120))
+
+    # -------------------------------------------------------------- Ausgabe-Helfer
+
+    def out(self, text: str = "", end: str = "\n"):
+        sys.stdout.write(text + end)
+        sys.stdout.flush()
+
+    def ask(self, prompt: str) -> str:
+        return input(prompt)
+
+    def _indent(self, text: str, prefix: str = "  │ ", max_lines: int = 40) -> str:
+        lines = text.splitlines() or [""]
+        shown = lines[:max_lines]
+        if len(lines) > max_lines:
+            shown.append(f"... ({len(lines) - max_lines} weitere Zeilen)")
+        return "\n".join(prefix + line for line in shown)
+
+    # -------------------------------------------------------------- Start
+
+    def startup_check(self) -> bool:
+        s, agent = self.s, self.agent
+        self.out(f"{s.bold}{s.cyan}{self.name}{s.reset} – dein lokaler KI-Assistent  {s.dim}(v{__version__}){s.reset}")
+        for err in agent.plugin_errors:
+            self.out(f"{s.yellow}{err}{s.reset}")
+        try:
+            info = agent.client.check()
+        except LLMError as e:
+            self.out(f"\n{s.red}{e}{s.reset}")
+            self.out("\nSo geht's: Ollama von https://ollama.com/download installieren, starten und Kai neu öffnen.")
+            return False
+        if not info["installed"]:
+            if not self._handle_missing_model(info["models"]):
+                return False
+        elif info.get("warning"):
+            self.out(f"{s.yellow}{info['warning']}{s.reset}")
+        mode = (f"{s.red}automatisch (ohne Nachfrage){s.reset}" if agent.auto_mode
+                else f"{s.green}mit Nachfrage{s.reset}")
+        self.out(f"Modell: {s.bold}{agent.client.model}{s.reset}  |  Aktionen: {mode}  |  /hilfe für Befehle")
+        if agent.auto_mode:
+            self.out(f"{s.red}Achtung: Kai führt Befehle ohne Rückfrage aus. Mit /auto aus wieder einschalten.{s.reset}")
+        return True
+
+    def _handle_missing_model(self, models: list[str]) -> bool:
+        s, agent = self.s, self.agent
+        model = agent.client.model
+        self.out(f"\n{s.yellow}Das Modell '{model}' ist noch nicht heruntergeladen.{s.reset}")
+        if isinstance(agent.client, OllamaClient):
+            answer = self.ask(f"Jetzt herunterladen? (einmalig, mehrere GB) [j/n] ").strip().lower()
+            if answer in ("j", "ja", "y", "yes", ""):
+                return self._pull(model)
+        if models:
+            self.out("Bereits installierte Modelle:")
+            for i, m in enumerate(models, 1):
+                self.out(f"  {i}. {m}")
+            choice = self.ask("Nummer wählen (Enter = abbrechen): ").strip()
+            if choice.isdigit() and 1 <= int(choice) <= len(models):
+                self._switch_model(models[int(choice) - 1], check=False)
+                return True
+        self.out(f"Tipp: im Terminal 'ollama pull {model}' ausführen und Kai neu starten.")
+        return False
+
+    def _pull(self, model: str) -> bool:
+        s = self.s
+        try:
+            last = ""
+            for p in self.agent.client.pull(model):
+                status = p.get("status", "")
+                total, done = p.get("total"), p.get("completed")
+                if total and done:
+                    pct = done / total * 100
+                    line = f"{status[:30]:30} {pct:5.1f} %  ({done / 1e9:.2f} / {total / 1e9:.2f} GB)"
+                else:
+                    line = status
+                if line != last:
+                    self.out(f"{s.clear_line}{line}", end="" if s.clear_line != "\r" else "\n")
+                    last = line
+            self.out(f"\n{s.green}Fertig!{s.reset}")
+            return True
+        except KeyboardInterrupt:
+            self.out("\nDownload abgebrochen.")
+            return False
+        except LLMError as e:
+            self.out(f"\n{s.red}{e}{s.reset}")
+            return False
+
+    def _switch_model(self, model: str, check: bool = True):
+        if check:
+            try:
+                models = self.agent.client.list_models()
+            except LLMError as e:
+                self.out(f"{self.s.red}{e}{self.s.reset}")
+                return
+            if models and model not in models and f"{model}:latest" not in models:
+                if isinstance(self.agent.client, OllamaClient):
+                    if self.ask(f"'{model}' ist nicht installiert. Herunterladen? [j/n] ").strip().lower() in ("j", "ja", "y"):
+                        if not self._pull(model):
+                            return
+                    else:
+                        return
+                else:
+                    self.out(f"'{model}' ist auf dem Server nicht verfügbar.")
+                    return
+        self.agent.set_model(model)
+        try:
+            save_setting("modell", model)
+        except Exception:
+            pass
+        self.out(f"Verwende jetzt: {self.s.bold}{model}{self.s.reset}")
+
+    # -------------------------------------------------------------- Hauptschleife
+
+    def loop(self):
+        if not self.startup_check():
+            return 1
+        while True:
+            try:
+                self.out("")
+                text = self.ask(f"{self.s.bold}{self.s.green}Du ›{self.s.reset} ").strip()
+            except (EOFError, KeyboardInterrupt):
+                self.out("\nTschüss!")
+                return 0
+            if not text:
+                continue
+            if text.startswith("/") or text.lower() in ("exit", "quit", "beenden", "tschüss"):
+                if self.command(text) == "quit":
+                    self.out("Tschüss!")
+                    return 0
+                continue
+            self.handle(text)
+
+    def command(self, text: str):
+        s, agent = self.s, self.agent
+        cmd, _, arg = text.partition(" ")
+        cmd = cmd.lower().lstrip("/")
+        arg = arg.strip()
+        if cmd in ("beenden", "exit", "quit", "q", "tschüss"):
+            return "quit"
+        if cmd in ("hilfe", "help", "h", "?"):
+            self.out(HELP.format(name=self.name))
+        elif cmd in ("neu", "new", "reset"):
+            agent.reset()
+            self.out("Neues Gespräch gestartet.")
+        elif cmd in ("modelle", "models"):
+            try:
+                models = agent.client.list_models()
+            except LLMError as e:
+                self.out(f"{s.red}{e}{s.reset}")
+                return None
+            for m in models:
+                mark = "  ← aktiv" if m in (agent.client.model, f"{agent.client.model}:latest") else ""
+                self.out(f"  {m}{mark}")
+            if not models:
+                self.out("Keine Modelle gefunden.")
+        elif cmd in ("modell", "model"):
+            if arg:
+                self._switch_model(arg)
+            else:
+                self.out(f"Aktuelles Modell: {agent.client.model}  (wechseln: /modell <name>)")
+        elif cmd in ("gedaechtnis", "gedächtnis", "memory"):
+            text = agent.memory.prompt_text()
+            self.out(text or "Noch nichts gemerkt. Sag z. B.: 'Merk dir, dass ich Max heiße.'")
+        elif cmd in ("vergiss", "forget"):
+            if arg.isdigit() and agent.memory.remove(int(arg)):
+                self.out(f"Eintrag {arg} gelöscht.")
+            else:
+                self.out("Nutzung: /vergiss <nr>  (Nummern siehe /gedaechtnis)")
+        elif cmd == "auto":
+            if arg.lower() in ("an", "on", "ein"):
+                agent.auto_mode = True
+                self.out(f"{s.red}Aktionen werden jetzt OHNE Nachfrage ausgeführt (außer gefährliche Befehle).{s.reset}")
+            elif arg.lower() in ("aus", "off"):
+                agent.auto_mode = False
+                agent.session_allowed.clear()
+                self.out(f"{s.green}{self.name} fragt wieder vor jeder Aktion nach.{s.reset}")
+            else:
+                self.out(f"Automatik ist {'an' if agent.auto_mode else 'aus'}. Nutzung: /auto an  oder  /auto aus")
+        else:
+            self.out(f"Unbekannter Befehl. {HELP.format(name=self.name)}")
+        return None
+
+    def handle(self, text: str):
+        s = self.s
+        state = {"text_open": False, "thinking_shown": False}
+
+        def open_text():
+            if state["thinking_shown"] and not self.agent.cfg.get("denken_anzeigen"):
+                self.out(s.clear_line, end="")
+                state["thinking_shown"] = False
+            if not state["text_open"]:
+                self.out(f"\n{s.bold}{s.cyan}{self.name} ›{s.reset} ", end="")
+                state["text_open"] = True
+
+        def close_text():
+            if state["text_open"]:
+                self.out("")
+                state["text_open"] = False
+            if state["thinking_shown"]:
+                if not self.agent.cfg.get("denken_anzeigen"):
+                    self.out(s.clear_line, end="")
+                else:
+                    self.out(s.reset)
+                state["thinking_shown"] = False
+
+        try:
+            for ev in self.agent.run(text, self.approve_hook(close_text)):
+                t = ev["type"]
+                if t == "thinking":
+                    if self.agent.cfg.get("denken_anzeigen"):
+                        if not state["thinking_shown"]:
+                            close_text()
+                            self.out(f"{s.dim}", end="")
+                            state["thinking_shown"] = True
+                        self.out(ev["text"], end="")
+                    elif not state["thinking_shown"]:
+                        self.out(f"{s.dim}  … denkt nach …{s.reset}", end="")
+                        state["thinking_shown"] = True
+                elif t == "text":
+                    if state["thinking_shown"] and self.agent.cfg.get("denken_anzeigen"):
+                        self.out(s.reset)
+                        state["thinking_shown"] = False
+                    open_text()
+                    self.out(ev["text"], end="")
+                elif t == "assistant":
+                    close_text()
+                elif t == "tool_start":
+                    close_text()
+                    summary = ev["summary"].splitlines()[0] if ev["summary"] else ""
+                    self.out(f"{s.magenta}  ⚙ {ev['name']}{s.reset} {s.dim}{summary[:self.width - 10]}{s.reset}")
+                elif t == "tool_result":
+                    self._show_result(ev)
+                elif t == "info":
+                    close_text()
+                    self.out(f"{s.dim}{ev['message']}{s.reset}")
+                elif t == "error":
+                    close_text()
+                    self.out(f"{s.red}{ev['message']}{s.reset}")
+                elif t == "cancelled":
+                    close_text()
+                    self.out(f"{s.yellow}Abgebrochen.{s.reset}")
+                elif t == "done":
+                    close_text()
+        except KeyboardInterrupt:
+            self.agent.cancel()
+            close_text()
+            self.out(f"\n{s.yellow}Abgebrochen.{s.reset}")
+
+    def _show_result(self, ev: dict):
+        s = self.s
+        status = ev["status"]
+        if status == "denied":
+            self.out(f"  {s.yellow}✗ abgelehnt{s.reset}")
+            return
+        color = s.green if status == "ok" else s.red
+        mark = "✓" if status == "ok" else "✗"
+        lines = (ev["result"] or "").splitlines()
+        preview = lines[:4]
+        more = f" … (+{len(lines) - 4} Zeilen)" if len(lines) > 4 else ""
+        for i, line in enumerate(preview):
+            prefix = f"  {color}{mark}{s.reset} " if i == 0 else "    "
+            self.out(f"{prefix}{s.dim}{line[:self.width - 6]}{s.reset}")
+        if more:
+            self.out(f"    {s.dim}{more.strip()}{s.reset}")
+
+    def approve_hook(self, before):
+        def approve(req: dict) -> str:
+            before()
+            s = self.s
+            self.out(f"\n  {s.yellow}┌ {self.name} möchte Folgendes tun:{s.reset}")
+            body = "\n".join(textwrap.fill(line, self.width - 6, replace_whitespace=False) if len(line) > self.width - 6
+                             else line for line in req["summary"].splitlines())
+            self.out(self._indent(body, prefix=f"  {s.yellow}│{s.reset} "))
+            if req.get("dangerous"):
+                self.out(f"  {s.yellow}│{s.reset} {s.red}{s.bold}ACHTUNG: Das kann Daten löschen oder das System verändern!{s.reset}")
+                options = "[j] ja  [n] nein"
+            else:
+                options = "[j] ja  [n] nein  [i] immer erlauben (für diese Sitzung)"
+            while True:
+                try:
+                    answer = self.ask(f"  {s.yellow}└ Erlauben? {options}: {s.reset}").strip().lower()
+                except EOFError:
+                    return "no"
+                if answer in ("j", "ja", "y", "yes"):
+                    return "yes"
+                if answer in ("n", "nein", "no", ""):
+                    return "no"
+                if answer in ("i", "immer", "a", "always") and not req.get("dangerous"):
+                    return "always"
+        return approve
+
+
+def run_cli(agent: Agent) -> int:
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[attr-defined]
+    except Exception:
+        pass
+    return TerminalChat(agent).loop() or 0
