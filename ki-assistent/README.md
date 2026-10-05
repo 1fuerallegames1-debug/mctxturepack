@@ -54,9 +54,9 @@ Mit [eigenen Plugins](#eigene-fähigkeiten-plugins) kannst du Angel beliebig erw
 1. **Python installieren** von <https://www.python.org/downloads/> – im ersten Fenster
    **„Add python.exe to PATH“** anhaken. (Bringt das Fenster-Paket tkinter schon mit.)
 2. **Ollama installieren** von <https://ollama.com/download> (führt die KI auf deinem PC aus).
-3. **Angel herunterladen:** die Datei **`Angel.zip`** von der Seite
-   **[Releases](../../releases/latest)** herunterladen. (Gibt es dort noch keine, stattdessen oben
-   **Code → Download ZIP** und darin den Ordner `ki-assistent` verwenden.)
+3. **Angel herunterladen:** die fertige Datei **[`Angel.zip`](Angel.zip)** herunterladen
+   (auf der Dateiseite der Knopf **„Download raw file“**). Alternativ die Seite
+   **[Releases](../../releases/latest)**, falls dort eine neuere Version liegt.
 4. **Auspacken** (Rechtsklick → „Alle extrahieren“).
 5. Im entpackten Ordner **`installieren.bat` doppelklicken**. Das richtet einmalig alles ein (fragt nach
    Mikrofon/Browser und ob Angel automatisch starten soll) und öffnet dann Angels Fenster.
@@ -354,6 +354,7 @@ ein.
 
 ```
 ki-assistent/
+├── Angel.zip                                     fertige Datei zum Weitergeben (Snapshot)
 ├── installieren.bat                             einmalige Einrichtung (ein Klick)
 ├── start.bat / start-terminal.bat / start.sh   Starter (Fenster / Textfenster)
 ├── autostart-ein.bat / autostart-aus.bat        automatischer Start beim Anmelden
