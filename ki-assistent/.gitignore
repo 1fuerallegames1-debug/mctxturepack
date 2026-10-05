@@ -4,3 +4,4 @@ config.tmp
 daten/
 __pycache__/
 *.pyc
+dist/

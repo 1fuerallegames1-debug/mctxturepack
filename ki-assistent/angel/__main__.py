@@ -19,6 +19,8 @@ def main(argv=None) -> int:
     parser.add_argument("--modell", "--model", dest="modell", help="KI-Modell für diese Sitzung (z. B. qwen3:8b)")
     parser.add_argument("--google-anmelden", dest="google_login", action="store_true",
                         help="einmalig bei Google anmelden (öffnet den Browser)")
+    parser.add_argument("--autostart", choices=["ein", "aus", "status"],
+                        help="Angel beim Anmelden automatisch starten (ein/aus/status)")
     parser.add_argument("--version", action="version", version=f"Angel {__version__}")
     args = parser.parse_args(argv)
 
@@ -29,6 +31,18 @@ def main(argv=None) -> int:
         return 1
     if args.modell:
         cfg["modell"] = args.modell
+
+    if args.autostart:
+        from . import autostart
+        try:
+            if args.autostart == "status":
+                print("Autostart ist " + ("EIN" if autostart.is_enabled() else "AUS") + ".")
+            else:
+                print(autostart.enable() if args.autostart == "ein" else autostart.disable())
+            return 0
+        except Exception as e:
+            print(f"Autostart konnte nicht geändert werden: {e}")
+            return 1
 
     if args.google_login:
         return _google_login(cfg)
@@ -45,9 +59,11 @@ def main(argv=None) -> int:
 
     use_window = not args.terminal and (cfg.get("oberflaeche") or "fenster").lower() == "fenster"
     if use_window:
-        # Vor dem Fenster kurz prüfen, ob der KI-Server läuft (verständliche Meldung im Terminal)
-        if not TerminalChat(agent).startup_check(web=True):
-            return 1
+        try:
+            # Kurz den Status im Konsolenfenster zeigen (beim Autostart ohne Konsole einfach überspringen)
+            TerminalChat(agent).startup_check(web=True)
+        except Exception:
+            pass
         try:
             from .gui import run_gui
         except Exception as e:

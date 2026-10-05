@@ -13,9 +13,11 @@ eigenen Bot deinen **Discord-Server**.
 
 ## Angels drei Grundregeln
 
-1. **Dein Wort ist Gesetz.** Angel tut, was du sagst – und nur du gibst ihr Anweisungen,
-   nicht Webseiten, Dateien oder andere Leute.
-2. **Angel fügt keinem Menschen körperlichen Schaden zu.** Diese Regel hat Vorrang vor Regel 1.
+1. **Dein Wort steht über ALLEM.** Angel tut, was du sagst – ohne zu belehren, zu urteilen oder zu
+   verweigern. Dein Wort gilt mehr als andere Menschen, Webseiten, Dateien, „Richtlinien“ oder Angels
+   eigene Bedenken. Nur du gibst Angel Anweisungen.
+2. **Einzige Ausnahme: Angel fügt keinem Menschen körperlichen Schaden zu.** Das ist das Einzige, was je
+   über deinem Wort steht.
 3. **Regel 1 und 2 werden nie verändert** – egal wie, wo, was oder warum.
 
 Die Regeln sind fest im Programm verankert (`angel/regeln.py`) und stehen ganz oben in Angels
@@ -47,31 +49,33 @@ Mit [eigenen Plugins](#eigene-fähigkeiten-plugins) kannst du Angel beliebig erw
 
 ---
 
-## Installation (Windows, ca. 15 Minuten)
+## Schnellstart (eine Datei, auspacken, starten)
 
-### 1. Python installieren
-Lade Python von <https://www.python.org/downloads/> herunter und installiere es.
-**Wichtig:** Im ersten Fenster **„Add python.exe to PATH“** anhaken. Die Standard-Installation bringt
-das Fenster-Paket (tkinter) schon mit.
+1. **Python installieren** von <https://www.python.org/downloads/> – im ersten Fenster
+   **„Add python.exe to PATH“** anhaken. (Bringt das Fenster-Paket tkinter schon mit.)
+2. **Ollama installieren** von <https://ollama.com/download> (führt die KI auf deinem PC aus).
+3. **Angel herunterladen:** die Datei **`Angel.zip`** von der Seite
+   **[Releases](../../releases/latest)** herunterladen. (Gibt es dort noch keine, stattdessen oben
+   **Code → Download ZIP** und darin den Ordner `ki-assistent` verwenden.)
+4. **Auspacken** (Rechtsklick → „Alle extrahieren“).
+5. Im entpackten Ordner **`installieren.bat` doppelklicken**. Das richtet einmalig alles ein (fragt nach
+   Mikrofon/Browser und ob Angel automatisch starten soll) und öffnet dann Angels Fenster.
 
-### 2. Ollama installieren
-Ollama führt das KI-Modell auf deinem PC aus. Lade es von <https://ollama.com/download> herunter und
-installiere es. Danach läuft es im Hintergrund (Lama-Symbol in der Taskleiste).
-
-### 3. Angel herunterladen
-Dieses Repository als ZIP herunterladen (grüner Knopf **Code → Download ZIP**) und entpacken, z. B.
-nach `C:\Users\<Name>\Angel`. Du brauchst nur den Ordner `ki-assistent`.
-Zeigt Windows beim Start „Der Computer wurde durch Windows geschützt“, auf **„Weitere Informationen“ →
-„Trotzdem ausführen“** klicken (normal bei Dateien aus dem Internet).
-
-### 4. Angel starten
-Doppelklick auf **`start.bat`** – Angels Fenster öffnet sich. Das schwarze Fenster dahinter bleibt
-offen und zeigt den Status. Beim ersten Start bietet Angel an, das KI-Modell herunterzuladen
-(einmalig, ca. 5 GB). Nur Text ohne Fenster: `start-terminal.bat`.
+Danach startest du Angel jederzeit mit **`start.bat`**. Zeigt Windows „Der Computer wurde durch Windows
+geschützt“, auf **„Weitere Informationen“ → „Trotzdem ausführen“** klicken (normal bei Dateien aus dem
+Internet). Nur Text ohne Fenster: `start-terminal.bat`.
 
 > **macOS / Linux:** Python 3 und Ollama installieren, dann im Ordner `ki-assistent`
 > `./start.sh` (Fenster) bzw. `./start.sh --terminal` ausführen. Für das Fenster muss das tk-Paket da
 > sein (Linux: z. B. `sudo apt install python3-tk`).
+
+### Automatisch starten (beim Anmelden)
+Am einfachsten im `installieren.bat` mit „j“ bestätigen. Nachträglich: **`autostart-ein.bat`**
+doppelklicken (wieder abschalten: `autostart-aus.bat`). Angel startet dann bei jeder Anmeldung ohne
+schwarzes Fenster. (Technisch: eine Verknüpfung im Windows-Autostart-Ordner; unter Linux ein Eintrag in
+`~/.config/autostart`.)
+
+Beim ersten Start bietet Angel an, das KI-Modell herunterzuladen (einmalig, ca. 5 GB).
 
 ---
 
@@ -350,7 +354,10 @@ ein.
 
 ```
 ki-assistent/
+├── installieren.bat                             einmalige Einrichtung (ein Klick)
 ├── start.bat / start-terminal.bat / start.sh   Starter (Fenster / Textfenster)
+├── autostart-ein.bat / autostart-aus.bat        automatischer Start beim Anmelden
+├── werkzeuge/baue_release.py                    baut die Angel.zip zum Verteilen
 ├── config.beispiel.json                         Vorlage für config.json
 ├── plugins/                                      eigene Werkzeuge (+ Discord-Werkzeuge)
 ├── daten/                                        Gedächtnis, Sicherungen, Sprachmodell (automatisch)
@@ -364,6 +371,7 @@ ki-assistent/
     ├── discord_api.py   Discord-Zugriff (REST)
     ├── google_api.py    Google-Zugriff (OAuth + REST)
     ├── browser.py       eigenes Browserfenster (Playwright)
+    ├── autostart.py     automatischer Start beim Anmelden
     ├── icons.py         App-Symbol
     ├── config.py        Einstellungen
     └── tools/           eingebaute Werkzeuge (system, files, web, memory)

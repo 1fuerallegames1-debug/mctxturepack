@@ -1,0 +1,32 @@
+name: Angel Release
+
+# Baut aus dem Ordner ki-assistent eine fertige Angel.zip und haengt sie an ein Release.
+# Auslösen: einen Tag "angel-v1" (o. ä.) pushen, oder unter Actions "Run workflow".
+on:
+  push:
+    tags: ["angel-v*"]
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Angel.zip bauen
+        run: python ki-assistent/werkzeuge/baue_release.py --out Angel.zip
+      - name: Release veroeffentlichen
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event_name == 'workflow_dispatch' && 'angel-latest' || github.ref_name }}
+          name: Angel
+          make_latest: true
+          files: Angel.zip
+          body: |
+            Angel – deine eigene KI auf deinem PC.
+            Herunterladen: Angel.zip · entpacken · im Ordner installieren.bat doppelklicken.
