@@ -49,33 +49,30 @@ Mit [eigenen Plugins](#eigene-fähigkeiten-plugins) kannst du Angel beliebig erw
 
 ---
 
-## Schnellstart (eine Datei, auspacken, starten)
+## Schnellstart – ein Download, ein Doppelklick
 
-1. **Python installieren** von <https://www.python.org/downloads/> – im ersten Fenster
-   **„Add python.exe to PATH“** anhaken. (Bringt das Fenster-Paket tkinter schon mit.)
-2. **Ollama installieren** von <https://ollama.com/download> (führt die KI auf deinem PC aus).
-3. **Angel herunterladen:** die fertige Datei **[`Angel.zip`](Angel.zip)** herunterladen
-   (auf der Dateiseite der Knopf **„Download raw file“**). Alternativ die Seite
-   **[Releases](../../releases/latest)**, falls dort eine neuere Version liegt.
-4. **Auspacken** (Rechtsklick → „Alle extrahieren“).
-5. Im entpackten Ordner **`installieren.bat` doppelklicken**. Das richtet einmalig alles ein (fragt nach
-   Mikrofon/Browser und ob Angel automatisch starten soll) und öffnet dann Angels Fenster.
+Du lädst **nur eine Datei** herunter. Den Rest macht Angel automatisch.
 
-Danach startest du Angel jederzeit mit **`start.bat`**. Zeigt Windows „Der Computer wurde durch Windows
-geschützt“, auf **„Weitere Informationen“ → „Trotzdem ausführen“** klicken (normal bei Dateien aus dem
-Internet). Nur Text ohne Fenster: `start-terminal.bat`.
+1. **`Angel.zip`** herunterladen (die Datei hast du von mir bekommen; im Repo: `Angel.zip` → **„Download raw file“**).
+2. **Auspacken** (Rechtsklick → „Alle extrahieren“).
+3. Im Ordner `Angel` **`installieren.bat` doppelklicken**.
+
+`installieren.bat` installiert dann **selbst** alles Nötige und braucht keine weiteren Downloads von dir:
+Python, Ollama, das KI-Modell (mehrere GB – das dauert beim ersten Mal), Sprache und Browser, und richtet
+den automatischen Start ein. Zum Schluss öffnet sich Angels Fenster. Lass das schwarze Fenster offen,
+bis es „Fertig!“ meldet.
+
+Danach startest du Angel jederzeit mit **`start.bat`** – und weil der Autostart an ist, auch bei jeder
+Anmeldung von selbst. Autostart abschalten: `autostart-aus.bat`.
+
+Voraussetzungen: Windows 10 oder 11 mit Internet beim ersten Einrichten. Die automatische Installation
+nutzt **winget** (ist auf aktuellem Windows 10/11 vorhanden). Fehlt winget oder klappt etwas nicht, öffnet
+`installieren.bat` die passende Download-Seite und sagt dir, was zu tun ist. Zeigt Windows „Der Computer
+wurde durch Windows geschützt“, auf **„Weitere Informationen“ → „Trotzdem ausführen“** klicken.
 
 > **macOS / Linux:** Python 3 und Ollama installieren, dann im Ordner `ki-assistent`
 > `./start.sh` (Fenster) bzw. `./start.sh --terminal` ausführen. Für das Fenster muss das tk-Paket da
-> sein (Linux: z. B. `sudo apt install python3-tk`).
-
-### Automatisch starten (beim Anmelden)
-Am einfachsten im `installieren.bat` mit „j“ bestätigen. Nachträglich: **`autostart-ein.bat`**
-doppelklicken (wieder abschalten: `autostart-aus.bat`). Angel startet dann bei jeder Anmeldung ohne
-schwarzes Fenster. (Technisch: eine Verknüpfung im Windows-Autostart-Ordner; unter Linux ein Eintrag in
-`~/.config/autostart`.)
-
-Beim ersten Start bietet Angel an, das KI-Modell herunterzuladen (einmalig, ca. 5 GB).
+> sein (Linux: z. B. `sudo apt install python3-tk`). Autostart: `python3 -m angel --autostart ein`.
 
 ---
 

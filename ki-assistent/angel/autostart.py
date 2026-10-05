@@ -39,11 +39,16 @@ def _win_shortcut() -> Path:
 def _win_enable() -> str:
     link = _win_shortcut()
     link.parent.mkdir(parents=True, exist_ok=True)
+
+    def q(value) -> str:
+        """Apostroph im Pfad (z. B. "Tom's KI") absichern – in PowerShell wird ' als '' geschrieben."""
+        return str(value).replace("'", "''")
+
     ps = (
-        f"$s = (New-Object -ComObject WScript.Shell).CreateShortcut('{link}');"
-        f"$s.TargetPath = '{_pythonw()}';"
+        f"$s = (New-Object -ComObject WScript.Shell).CreateShortcut('{q(link)}');"
+        f"$s.TargetPath = '{q(_pythonw())}';"
         "$s.Arguments = '-m angel';"
-        f"$s.WorkingDirectory = '{PROJECT_DIR}';"
+        f"$s.WorkingDirectory = '{q(PROJECT_DIR)}';"
         f"$s.Description = 'Angel – deine KI';"
         "$s.WindowStyle = 7;"
         "$s.Save()"
