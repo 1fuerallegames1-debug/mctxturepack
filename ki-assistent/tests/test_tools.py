@@ -409,6 +409,13 @@ class ConfigTest(TempDirTest):
         save_setting("modell", "b", path)
         self.assertEqual(json.loads(path.read_text(encoding="utf-8")), {"name": "Jarvis", "modell": "b"})
 
+    def test_json_errors_get_german_hints(self):
+        path = self.tmp / "config.json"
+        path.write_text('{"dein_name": "Max"\n "sprache": "Deutsch"}', encoding="utf-8")
+        with self.assertRaises(ConfigError) as ctx:
+            load_config(path)
+        self.assertIn("Komma", str(ctx.exception))
+
     def test_ansi_config_and_path_hint(self):
         path = self.tmp / "config.json"
         path.write_bytes('{"dein_name": "Jürgen"}'.encode("cp1252"))

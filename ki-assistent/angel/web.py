@@ -212,7 +212,8 @@ class WebApp:
                     break
             with self.pending_lock:
                 self.pending.pop(approval_id, None)
-            decision = slot["decision"] if slot["event"].is_set() else "no"
+            # Niemand hat geantwortet -> "abgelaufen" (nicht dasselbe wie eine Ablehnung)
+            decision = slot["decision"] if slot["event"].is_set() else ("no" if agent.cancel_event.is_set() else "expired")
             run.emit({"type": "approval_done", "approval_id": approval_id, "decision": decision})
             return decision
 
@@ -279,11 +280,14 @@ class WebApp:
         urls = self.phone_urls()
         if not urls:
             return {"enabled": False}
-        main = urls[0]
-        svg = QrCode(main).to_svg(border=3, scale=6)
-        return {"enabled": True, "url": main, "urls": urls,
-                "qr": "data:image/svg+xml;base64," + base64.b64encode(svg.encode()).decode(),
-                "tailscale": [u for u in urls if _is_tailscale(urlsplit(u).hostname or "")]}
+        def qr(url: str) -> str:
+            svg = QrCode(url).to_svg(border=3, scale=6)
+            return "data:image/svg+xml;base64," + base64.b64encode(svg.encode()).decode()
+
+        codes = [{"url": u, "qr": qr(u), "tailscale": _is_tailscale(urlsplit(u).hostname or "")} for u in urls]
+        # zuerst die Adresse fürs WLAN, Tailscale-Adressen (für unterwegs) danach
+        codes.sort(key=lambda c: c["tailscale"])
+        return {"enabled": True, "url": codes[0]["url"], "qr": codes[0]["qr"], "codes": codes}
 
 
 class AngelHandler(BaseHTTPRequestHandler):
@@ -375,6 +379,7 @@ class AngelHandler(BaseHTTPRequestHandler):
             self._send_json(200, {
                 "name": agent.cfg.get("name") or "Angel", "model": agent.client.model, "auto": agent.auto_mode,
                 "busy": app.busy.locked(), "plugin_errors": agent.plugin_errors, "phone": app.phone,
+                "notices": agent.notices, "local": _is_loopback(self.client_address[0]),
                 "rules": [r.format(name=agent.cfg.get("name") or "Angel") for r in REGELN],
                 "run": {"id": run.id, "done": run.done} if run else None,
                 "generation": f"{app.instance}-{app.generation}",
@@ -528,18 +533,25 @@ def run_web(agent: Agent, open_browser: bool = True, port: int | None = None, ph
     name = cfg.get("name") or "Angel"
     print(f"\n{name} läuft im Browser: {app.local_url()}")
     if app.phone:
-        urls = app.phone_urls()
+        urls = sorted(app.phone_urls(), key=lambda u: _is_tailscale(urlsplit(u).hostname or ""))
+        lan = [u for u in urls if not _is_tailscale(urlsplit(u).hostname or "")]
+        tailscale = [u for u in urls if u not in lan]
         if urls:
-            print("\nHandy verbinden: Handy ins selbe WLAN, dann diesen QR-Code mit der Kamera scannen:\n")
-            _print_qr(urls[0])
-            print(f"\n   oder Adresse eintippen: {urls[0]}")
-            for u in urls[1:]:
-                print(f"   andere Netzwerk-Adresse: {u}" + ("  (Tailscale – auch unterwegs)" if _is_tailscale(urlsplit(u).hostname or "") else ""))
+            if lan:
+                print("\nHandy verbinden: Handy ins selbe WLAN, dann diesen QR-Code mit der Kamera scannen:\n")
+                _print_qr(lan[0])
+                print(f"\n   oder Adresse eintippen: {lan[0]}")
+                for u in lan[1:]:
+                    print(f"   andere Netzwerk-Adresse: {u}")
+            for u in tailscale:
+                print("\nFür unterwegs (Tailscale): diesen QR-Code scannen und zum Startbildschirm hinzufügen:\n")
+                _print_qr(u)
+                print(f"\n   {u}")
         else:
             print("Keine Netzwerk-Adresse gefunden – ist der PC mit dem WLAN/LAN verbunden?")
         print(f"\nWICHTIG: Wer diesen Link kennt, kann {name} Aufträge geben. Nur im eigenen WLAN nutzen und nicht weitergeben.\n"
-              "Falls Windows nach der Firewall fragt: Zugriff für 'Private Netzwerke' erlauben.\n"
-              "Neuen Schlüssel erzeugen (alte Links werden ungültig): mit --neuer-schluessel starten.")
+              "Erscheint eine Firewall-Meldung von Windows: Zugriff für 'Private Netzwerke' erlauben.\n"
+              "Link ungültig machen: Angel beenden, die Datei daten\\zugang.json löschen und neu starten.")
     print("\nZum Beenden dieses Fenster schließen oder Strg+C drücken.\n")
     if open_browser:
         threading.Timer(0.8, lambda: webbrowser.open(app.local_url())).start()

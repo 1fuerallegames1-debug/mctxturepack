@@ -97,6 +97,8 @@ class TerminalChat:
         self.out(f"{s.bold}{s.cyan}{self.name}{s.reset} – deine eigene KI  {s.dim}(v{__version__}){s.reset}")
         for err in agent.plugin_errors:
             self.out(f"{s.yellow}{err}{s.reset}")
+        for note in getattr(agent, "notices", []):
+            self.out(f"{s.dim}{note}{s.reset}")
         try:
             info = agent.client.check()
         except LLMError as e:

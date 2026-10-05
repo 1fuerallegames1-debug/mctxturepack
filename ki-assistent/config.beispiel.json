@@ -3,6 +3,7 @@
   "name": "Angel",
   "dein_name": "",
   "sprache": "Deutsch und Englisch",
+  "geschlecht": "weiblich",
 
   "anbieter": "ollama",
   "modell": "qwen3:8b",

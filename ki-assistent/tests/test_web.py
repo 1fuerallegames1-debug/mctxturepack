@@ -218,6 +218,19 @@ class PhoneAutoModeTest(PhoneWebTest):
         self.assertEqual(self.json("POST", "/api/settings", {"auto": True})[0], 200)  # am PC selbst geht es
 
 
+class PairingCodesTest(PhoneWebTest):
+    def test_tailscale_gets_its_own_qr_code(self):
+        from unittest import mock
+        with mock.patch("angel.web.local_ips", return_value=["192.168.178.23", "100.101.102.103"]):
+            data = self.json("GET", "/api/pairing")[1]
+        self.assertEqual([c["tailscale"] for c in data["codes"]], [False, True])
+        self.assertIn("192.168.178.23", data["url"])
+        self.assertTrue(all(c["qr"].startswith("data:image/svg+xml") for c in data["codes"]))
+        status = self.json("GET", "/api/status")[1]
+        self.assertTrue(status["local"])
+        self.assertEqual(status["notices"], [])
+
+
 class TokenTest(TempDirTest):
     def test_token_is_persistent_and_renewable(self):
         a = load_token(self.tmp)

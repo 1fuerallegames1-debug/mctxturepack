@@ -17,6 +17,8 @@ DEFAULTS = {
     "dein_name": "",
     # "Deutsch und Englisch" = antwortet in der Sprache, in der du schreibst
     "sprache": "Deutsch und Englisch",
+    # "weiblich", "männlich" oder "neutral" – wie die KI im Deutschen von sich selbst spricht
+    "geschlecht": "weiblich",
     # Woher kommt das KI-Modell? "ollama" (empfohlen) oder "openai"
     # (= jeder OpenAI-kompatible lokale Server, z. B. LM Studio oder llama.cpp)
     "anbieter": "ollama",
@@ -88,7 +90,14 @@ def load_config(path: Path | None = None) -> dict:
             user = json.loads(text)
         except json.JSONDecodeError as e:
             hint = ""
-            if "escape" in e.msg.lower():
+            msg = e.msg.lower()
+            if "expecting ',' delimiter" in msg:
+                hint = "\nTipp: Vermutlich fehlt am Ende der Zeile davor ein Komma."
+            elif "property name" in msg:
+                hint = "\nTipp: Überzähliges Komma vor } oder fehlende Anführungszeichen um einen Namen."
+            elif "expecting value" in msg:
+                hint = "\nTipp: Ein Wert fehlt (z. B. \"\" für leeren Text) oder es steht ein Komma zu viel."
+            elif "escape" in msg:
                 hint = ("\nTipp: In Pfaden jeden \\ doppelt schreiben (\"D:\\\\Server\") "
                         "oder / verwenden (\"D:/Server\").")
             raise ConfigError(

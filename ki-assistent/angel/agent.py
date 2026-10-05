@@ -19,6 +19,7 @@ from typing import Callable, Iterator
 
 from .config import PROJECT_DIR, working_dir
 from .llm import Cancelled, LLMError, make_client
+from .regeln import PROJECT_DIR
 from .regeln import PROMPT as RULES_PROMPT
 from .regeln import blocked_reason, integrity_notice, sensitive_reason
 from .tools import ToolContext, ToolError, ToolRegistry, load_builtin_tools, load_plugins, truncate
@@ -34,6 +35,11 @@ DANGER_WARNINGS = {
     "run_python": "ACHTUNG: Dieser Code löscht Dateien oder startet andere Programme!",
 }
 FAILED_EXIT = re.compile(r"^Exit-Code: (?!0$)", re.M)
+# Diese Schutzabfragen gelten auch im Automatik-Modus (gegen manipulierte Webseiten/Dateien)
+GUARDED_IN_AUTO = {"fetch_webpage", "open_item", "remember", "forget"}
+EXPIRED_MESSAGE = ("Your owner did not answer the approval request in time (they may be away). "
+                   "Do not retry now - ask again when they are back.")
+RULE3_DISPLAY = "Abgelehnt (Regel 3): Angel darf ihren Programmkern und ihre Grundregeln nicht verändern."
 # Werkzeuge, deren Ergebnis keine fremden Inhalte enthält
 TRUSTED_TOOLS = {"remember", "forget", "system_info"}
 
@@ -68,6 +74,15 @@ def language_rule(setting) -> str:
     return f"- Always answer in {lang}, even though these instructions are English."
 
 
+def gender_rule(setting) -> str:
+    value = (setting or "weiblich").strip().lower()
+    if value in ("weiblich", "female", "sie", "w"):
+        return "- You are female: in German, use feminine forms for yourself (e.g. \"deine Assistentin\")."
+    if value in ("männlich", "maennlich", "male", "er", "m"):
+        return "- You are male: in German, use masculine forms for yourself (e.g. \"dein Assistent\")."
+    return "- In German, use gender-neutral wording for yourself."
+
+
 class Agent:
     def __init__(self, cfg: dict, client=None, registry: ToolRegistry | None = None, memory: Memory | None = None):
         self.cfg = cfg
@@ -79,10 +94,11 @@ class Agent:
         self.memory = memory or Memory(data / "gedaechtnis.json")
         if getattr(self.memory, "warning", ""):
             self.plugin_errors.append(self.memory.warning)  # wird beim Start angezeigt
+        self.notices: list[str] = []  # Hinweise (keine Fehler), z. B. "Programmkern wurde aktualisiert"
         if registry is None:  # nur beim echten Start, nicht in Tests mit eigenem Werkzeugkasten
             notice = integrity_notice(data)
             if notice:
-                self.plugin_errors.append(notice)
+                self.notices.append(notice)
         self.ctx = ToolContext(cfg=cfg, workdir=working_dir(cfg), data_dir=data, memory=self.memory)
         self.history: list[dict] = []
         self.session_allowed: set[str] = set()
@@ -150,6 +166,9 @@ class Agent:
             "Do not save temporary details.",
             "- Your owner may be chatting from their phone or another device via the browser interface. "
             "Your tools always act on this PC, not on the phone.",
+            f"- New abilities (plugins) are Python files in {PROJECT_DIR / 'plugins'} that use "
+            "`from angel.tools import tool` (see beispiel_wetter.py there as a template). They are loaded at "
+            "the next start, so tell your owner to restart you afterwards.",
             "",
             "## This computer",
             f"- Operating system: {os_label}",
@@ -167,7 +186,7 @@ class Agent:
                       "with forget)", facts or "(empty)"]
         if self.trimmed:
             lines += ["", "(Older messages of this conversation were removed to save space.)"]
-        lines += ["", "## Language and style", language_rule(cfg.get("sprache")),
+        lines += ["", "## Language and style", language_rule(cfg.get("sprache")), gender_rule(cfg.get("geschlecht")),
                   "- Be friendly, direct and concise. Use Markdown for lists, tables and code."]
         if owner:
             lines.append(f"- Your owner's name is {owner}.")
@@ -369,7 +388,7 @@ class Agent:
 
         blocked = blocked_reason(name, args, self.ctx)
         if blocked:  # Regel 3: Angels Programmkern und Grundregeln bleiben unverändert
-            return blocked, "error", blocked
+            return blocked, "error", RULE3_DISPLAY
 
         try:
             level = tool_obj.needs_confirmation(self.ctx, args)
@@ -383,7 +402,8 @@ class Agent:
         scope_key, scope_label = tool_obj.approval_scope(args)
         allowed = ((name, scope_key) in self.session_allowed if scope_key is not None
                    else name in self.session_allowed) or name in set(self.cfg.get("immer_erlauben") or [])
-        must_ask = level == "always" or (level and not self.auto_mode and not allowed)
+        must_ask = level == "always" or (
+            level and not allowed and (not self.auto_mode or name in GUARDED_IN_AUTO))
         if must_ask:
             request = {"id": call["id"], "tool": name, "args": args, "summary": start["summary"],
                        "dangerous": level == "always", "warning": warning,
@@ -395,6 +415,8 @@ class Agent:
                 raise Cancelled()  # "Stopp" ist keine Ablehnung
             if decision == "always" and level != "always":
                 self.session_allowed.add((name, scope_key) if scope_key is not None else name)
+            elif decision == "expired":
+                return EXPIRED_MESSAGE, "cancelled", "Keine Antwort auf die Nachfrage (abgelaufen)."
             elif decision not in ("yes", "always"):
                 return DENIED_MESSAGE, "denied", "Vom Benutzer abgelehnt."
 

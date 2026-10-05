@@ -36,6 +36,7 @@
     }
   }
   * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
   html, body { height: 100%; margin: 0; }
   body { background: var(--bg); color: var(--text); font: 15px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
          display: flex; flex-direction: column; height: 100vh; height: 100dvh; }
@@ -115,9 +116,12 @@
   dialog img { display: block; width: 100%; max-width: 280px; margin: 10px auto; border-radius: 8px; image-rendering: pixelated; }
   dialog code { font-size: 12px; overflow-wrap: anywhere; }
   dialog .close { float: right; }
+  dialog .dlg-label { margin-top: 12px; font-weight: 600; }
+  dialog .dlg-hint { margin-top: 10px; color: var(--muted); font-size: 13px; }
   @media (max-width: 640px) {
     header { padding: 8px 10px; gap: 6px; } main { padding: 10px; } footer { padding: 8px 10px 10px; }
-    header h1 small, .hint, #autoText { display: none; }
+    header h1 small, .hint { display: none; }
+    #autoText { font-size: 12px; }
     select { max-width: 130px; font-size: 16px; }   /* iPhone zoomt sonst beim Antippen */
     header, main, footer { padding-left: max(10px, env(safe-area-inset-left)); padding-right: max(10px, env(safe-area-inset-right)); }
     .msg.user { max-width: 92%; }
@@ -363,7 +367,8 @@ function closeApproval(id, decision) {
   const box = approvals[id];
   if (!box) return;
   box.classList.add("done");
-  const label = decision === "yes" ? "✓ erlaubt" : decision === "always" ? "✓ für diese Sitzung immer erlaubt" : "✗ abgelehnt";
+  const label = { yes: "✓ erlaubt", always: "✓ für diese Sitzung immer erlaubt", expired: "⏱ keine Antwort (abgelaufen)" }[decision]
+                || "✗ abgelehnt";
   box.querySelector(".buttons").replaceChildren(div("", label));
   delete approvals[id];
 }
@@ -558,8 +563,10 @@ $("newChat").onclick = async () => {
 
 $("auto").onchange = async (e) => {
   const on = e.target.checked;
-  if (on && !confirm("Automatik einschalten?\n\n" + assistantName + " führt dann Befehle, Programme und Dateiänderungen OHNE Rückfrage aus. " +
-                      "Nur gefährliche Befehle (z. B. Löschen ganzer Ordner) werden noch nachgefragt.")) {
+  if (on && !confirm("Automatik einschalten?\n\n" + assistantName + " führt dann Befehle, Python-Code und Dateiänderungen OHNE Rückfrage aus. " +
+                      "Weiter nachgefragt werden nur bekannte gefährliche Aktionen (z. B. ganze Ordner löschen), Änderungen an " +
+                      assistantName + "s Einstellungen sowie Webseiten-Abrufe und Gedächtnis-Änderungen, die von fremden Inhalten " +
+                      "ausgelöst sein könnten. Das ist keine Garantie – nur nutzen, wenn du genau weißt, was du tust.")) {
     e.target.checked = false; return;
   }
   try { const r = await api("/api/settings", { auto: on }); updateAuto(r.auto); }
@@ -597,14 +604,18 @@ $("phone").onclick = async () => {
   try {
     const p = await api("/api/pairing");
     if (p.enabled) {
-      dlg.append(div("", "Handy ins selbe WLAN wie den PC, dann den Code mit der Handy-Kamera scannen:"));
-      const img = document.createElement("img"); img.src = p.qr; img.alt = "QR-Code"; dlg.append(img);
-      const c = document.createElement("code"); c.textContent = p.url; dlg.append(c);
-      dlg.append(div("hint", "Tipp: Im Handy-Browser „Zum Startbildschirm hinzufügen“ – dann ist " + assistantName +
+      for (const code of p.codes || [{ url: p.url, qr: p.qr, tailscale: false }]) {
+        dlg.append(div("dlg-label", code.tailscale
+          ? "Für unterwegs (Tailscale) – diesen Code scannen und ebenfalls zum Startbildschirm hinzufügen:"
+          : "Im selben WLAN wie der PC: Code mit der Handy-Kamera scannen:"));
+        const img = document.createElement("img"); img.src = code.qr; img.alt = "QR-Code"; dlg.append(img);
+        const c = document.createElement("code"); c.textContent = code.url; dlg.append(c);
+      }
+      dlg.append(div("dlg-hint", "Tipp: Im Handy-Browser „Zum Startbildschirm hinzufügen“ – dann ist " + assistantName +
                      " wie eine App erreichbar. Den Link nicht weitergeben: Wer ihn hat, kann " + assistantName + " Aufträge geben."));
     } else {
       dlg.append(div("", "Der Handy-Zugriff ist gerade aus. Beende " + assistantName +
-                     " und starte sie mit „start-handy.bat“ (bzw. ./start.sh --handy). Dann erscheint hier ein QR-Code zum Scannen."));
+                     " und starte neu mit „start-handy.bat“ (bzw. ./start.sh --handy). Dann erscheint hier ein QR-Code zum Scannen."));
     }
   } catch (e) { dlg.append(div("msg error", e.message)); }
   if (dlg.showModal) dlg.showModal(); else dlg.setAttribute("open", "");
@@ -629,6 +640,11 @@ async function init() {
     updateAuto(st.auto);
     await renderAll(st);
     (st.plugin_errors || []).forEach((m) => addError(m));
+    (st.notices || []).forEach((m) => {   // Hinweise nur einmal pro Gerät zeigen
+      if (store.get("angel-notice") !== m) { addInfo(m); store.set("angel-notice", m); }
+    });
+    // Die Automatik lässt sich nur direkt am PC einschalten – auf anderen Geräten den Schalter ausblenden
+    $("autoLabel").hidden = !st.local && !st.auto;
     loadModels();
   } catch (e) {
     if (e.status === 401) showNoToken(); else { showWelcome(); addError(e.message); }

@@ -105,6 +105,8 @@ def remember(ctx, fact: str):
     "Delete a fact from long-term memory by its number (shown in brackets in the memory list).",
     {"fact_id": {"type": "integer", "description": "Number of the fact to delete."}},
     required=["fact_id"],
+    confirm=lambda ctx, a: bool(ctx.untrusted_seen),  # wie bei remember
+    summary=lambda a: f"Aus dem Gedächtnis löschen: Nr. {a.get('fact_id')}",
 )
 def forget(ctx, fact_id: int):
     if ctx.memory is None:

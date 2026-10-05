@@ -35,8 +35,10 @@ So ist das umgesetzt:
 - Die Regeln sind fest im Programm eingebaut (`angel/regeln.py`) und stehen **ganz oben** in Angels
   Anweisungen. Sie lassen sich **nicht** über `config.json`, eigene Zusatz-Anweisungen, das Gedächtnis
   oder den Chat abschalten – auch nicht durch dich, „Rollenspiele“ oder Texte auf Webseiten.
-- Angel kann ihren eigenen Programmkern (den Ordner `angel/`) und damit ihre Regeln **nicht selbst
-  verändern**: Solche Datei-Änderungen und Befehle werden blockiert, bevor sie überhaupt nachfragt.
+- Angel soll ihren eigenen Programmkern (den Ordner `angel/`) und damit ihre Regeln **nicht selbst
+  verändern**: Datei-Änderungen dort und Befehle, die erkennbar auf diesen Ordner zielen, werden blockiert,
+  bevor sie überhaupt nachfragt. Das erkennt die üblichen Wege, ist aber keine Garantie. Ändert sich der
+  Programmkern trotzdem (zum Beispiel durch ein Update), zeigt Angel beim nächsten Start einen Hinweis.
 - Regel 1 gilt auch technisch: Aktionen am PC führt Angel erst aus, wenn **du** sie erlaubt hast (siehe
   [Sicherheit](#sicherheit-bitte-lesen)).
 
@@ -90,8 +92,12 @@ Doppelklick auf eine dieser Dateien:
 | **`start-handy.bat`** | im Browser am PC **und auf dem Handy** (siehe [Angel auf dem Handy](#angel-auf-dem-handy)) |
 | **`start.bat`** | direkt im **Terminal** |
 
+Zeigt Windows dabei „Der Computer wurde durch Windows geschützt“, klicke auf **„Weitere Informationen“** →
+**„Trotzdem ausführen“** (das passiert bei Dateien aus dem Internet). Alternativ vor dem Entpacken: Rechtsklick
+auf die ZIP-Datei → Eigenschaften → Haken bei **„Zulassen“**.
+
 Beim ersten Start fragt Angel, ob sie das KI-Modell herunterladen soll (einmalig, ca. 5 GB).
-Alternativ geht das auch selbst in der Eingabeaufforderung: `ollama pull qwen3:8b`
+Du kannst das Modell auch selbst herunterladen (in der Eingabeaufforderung): `ollama pull qwen3:8b`
 
 Das schwarze Fenster muss offen bleiben, solange du Angel benutzt.
 
@@ -116,24 +122,26 @@ Gut zu wissen:
 - Am PC und am Handy siehst du **dasselbe Gespräch**. Nachfragen („Erlauben?“) kannst du auf dem Gerät
   beantworten, das du gerade in der Hand hast.
 - Geht das Handy-Display aus oder ist das WLAN kurz weg, **arbeitet Angel weiter**. Die Seite holt alles
-  nach, sobald die Verbindung wieder da ist.
+  nach, sobald die Verbindung wieder da ist. Eine Nachfrage („Erlauben?“) wartet bis zu 15 Minuten auf
+  deine Antwort; danach gilt sie als abgelaufen und Angel fragt später erneut.
 - **Sprechen statt tippen:** Nimm das Mikrofon deiner Handy-Tastatur (Diktierfunktion). Mit dem Knopf 🔈
   liest Angel ihre Antworten vor.
-- Fragt Windows beim ersten Start nach der **Firewall**, wähle **„Private Netzwerke“** und „Zugriff zulassen“.
+- Erscheint beim ersten Start eine **Firewall-Meldung** von Windows, wähle **„Private Netzwerke“** und „Zugriff zulassen“.
   Funktioniert es nicht, muss das WLAN in Windows als **privates Netzwerk** eingestellt sein
   (Einstellungen → Netzwerk und Internet → WLAN → dein Netzwerk → „Privates Netzwerk“).
 - Der Link im QR-Code enthält einen **geheimen Zugangsschlüssel**. Gib ihn nicht weiter: Wer ihn hat, kann
-  Angel Aufträge geben. Einen neuen Schlüssel erzeugst du mit `start-handy.bat --neuer-schluessel`
-  (alte Links funktionieren dann nicht mehr).
-- Nutze den Handy-Zugriff nur in **deinem eigenen WLAN**, nicht in öffentlichen Netzen. Die Verbindung im
-  WLAN ist nicht verschlüsselt.
+  Angel Aufträge geben. **Neuen Schlüssel erzeugen** (alte Links und QR-Codes funktionieren dann nicht mehr):
+  Angel beenden, im Ordner `ki-assistent` die Datei `daten\zugang.json` löschen und Angel neu starten.
+- Nutze den Handy-Zugriff nur in **deinem eigenen WLAN**, nicht in öffentlichen Netzen. Die Verbindung zu
+  Angel ist unverschlüsselt (http) – im fremden WLAN könnte jemand mitlesen.
 
 ### Auch unterwegs (mobile Daten)?
 
 Öffne Angel **niemals** per Portweiterleitung im Router für das ganze Internet. Sicher und kostenlos geht es
 mit **[Tailscale](https://tailscale.com/download)**: auf PC und Handy installieren und mit demselben Konto
-anmelden. Danach `start-handy.bat` starten – im Fenster erscheint zusätzlich eine Adresse mit
-`100.x.x.x` („Tailscale – auch unterwegs“), die von überall funktioniert.
+anmelden. Danach `start-handy.bat` starten – im Fenster (und im Browser unter 📱) erscheint zusätzlich ein
+QR-Code „Für unterwegs (Tailscale)“ mit einer Adresse `100.x.x.x`. Diesen Code scannen und die Seite ebenfalls
+zum Startbildschirm hinzufügen – sie funktioniert dann von überall, und die Verbindung ist verschlüsselt.
 
 ---
 
@@ -195,9 +203,9 @@ Angel kann auf deinem PC wirklich Dinge tun. Deshalb gibt es mehrere Schutzmecha
 
 1. **Nachfrage vor Aktionen.** Befehle, Python-Code, Datei-Änderungen und das Öffnen von Programmen
    werden dir vorher **vollständig** angezeigt und erst nach deinem „Ja“ ausgeführt.
-   **Lies dir an, was Angel tun will.** KI-Modelle machen Fehler.
+   **Lies genau durch, was Angel tun will.** KI-Modelle machen Fehler.
 2. **„Immer erlauben“** gilt nur für **genau diesen** Befehl, diese Datei, diese Webseite bzw. dieses Programm,
-   und nur bis „Neuer Chat“ oder bis Angel beendet wird.
+   und nur bis du ein neues Gespräch beginnst („Neu“ bzw. `/neu`) oder Angel beendest.
 3. **Gefährliche Aktionen werden immer nachgefragt**, auch im Automatik-Modus: bekannte gefährliche Befehle
    (ganze Ordner löschen, Formatieren, Herunterfahren, Registry löschen …), Python-Code, der Dateien löscht
    oder Programme startet, und Änderungen an Angels Einstellungen, Plugins und Startdateien.
@@ -207,15 +215,15 @@ Angel kann auf deinem PC wirklich Dinge tun. Deshalb gibt es mehrere Schutzmecha
 5. **Schutz vor manipulierten Webseiten und Dateien:** Inhalte aus dem Internet, aus Dateien oder aus
    Befehlsausgaben sind für Angel Daten, keine Anweisungen (Regel 1). Webadressen ruft sie nur ohne Nachfrage
    ab, wenn sie von dir oder aus einem Suchergebnis stammen. Im Browser öffnet sie ohne Nachfrage nur Adressen,
-   die du selbst geschrieben hast. Hat sie in der laufenden Aufgabe fremde Inhalte gelesen, fragt sie vorher,
-   bevor sie sich etwas dauerhaft merkt. So kann eine präparierte Seite weder Daten über einen Link
-   „hinausschmuggeln“ noch Angels Gedächtnis manipulieren.
+   die du selbst geschrieben hast. Hat sie im Gespräch fremde Inhalte gelesen, fragt sie, bevor sie sich etwas
+   dauerhaft merkt oder etwas vergisst. Diese Abfragen bleiben **auch im Automatik-Modus** aktiv. So kann eine
+   präparierte Seite nicht unbemerkt Daten über einen Link „hinausschmuggeln“ oder Angels Gedächtnis verändern.
 6. **Browser-Oberfläche geschützt:** Ohne Handy-Modus ist der Webserver nur auf deinem PC erreichbar (`127.0.0.1`).
    Jeder Zugriff braucht einen geheimen Zugangsschlüssel, den nur der automatisch geöffnete Link bzw. der
    QR-Code enthält. Die Automatik lässt sich nur direkt am PC einschalten, nicht vom Handy aus.
 
 **Tipps:** Starte Angel nicht als Administrator. Den Automatik-Modus nur verwenden, wenn du genau weißt,
-was du tust.
+was du tust: Dann laufen Befehle, Python-Code und Datei-Änderungen ohne Nachfrage.
 
 ---
 
@@ -229,6 +237,7 @@ sie als UTF-8. In Pfaden jeden `\` doppelt schreiben (`"D:\\Server"`) oder `/` v
 | `name` | Name der Assistentin | `"Angel"` |
 | `dein_name` | dein Name (Angel spricht dich dann damit an) | `""` |
 | `sprache` | `"Deutsch und Englisch"` = antwortet in deiner Sprache; oder fest z. B. `"Deutsch"` | `"Deutsch und Englisch"` |
+| `geschlecht` | wie die KI im Deutschen von sich spricht: `"weiblich"`, `"männlich"` oder `"neutral"` | `"weiblich"` |
 | `modell` | KI-Modell | `"qwen3:8b"` |
 | `kontext_laenge` | Wie viel vom Gespräch das Modell gleichzeitig „im Kopf“ hat (Tokens). Mehr = besseres Gedächtnis, braucht aber mehr Speicher. Bei Speicherfehlern verkleinern (z. B. `8192`), bei viel VRAM vergrößern (`32768`). | `16384` |
 | `temperatur` | Kreativität (0 = sachlich, 1 = kreativ) | `0.6` |
@@ -272,6 +281,7 @@ def turn_on_lights(ctx, room, on):
 ```
 
 Du kannst dir Plugins auch von Angel selbst schreiben lassen: „Schreib mir ein Plugin, das …“.
+Neue Plugins werden beim nächsten Start geladen.
 Weil Plugins Angels Fähigkeiten verändern, fragt sie dabei immer nach, auch im Automatik-Modus.
 
 ---
@@ -305,7 +315,8 @@ Stell die Kontextlänge im jeweiligen Programm auf mindestens 16384 ein und trag
 | Angel behauptet etwas, ohne es zu prüfen | Sag ausdrücklich „Prüf das nach“ oder „Such im Internet“. Größere Modelle sind deutlich zuverlässiger. |
 | Websuche findet nichts | DuckDuckGo blockiert manchmal automatische Anfragen. Später erneut versuchen oder eine SearXNG-Instanz eintragen. |
 | Handy: Seite lädt nicht | PC und Handy im selben WLAN? Windows-Firewall: Zugriff für „Private Netzwerke“ erlauben und das WLAN als privates Netzwerk einstellen. Läuft `start-handy.bat` noch? |
-| „Kein gültiger Zugangsschlüssel“ | Am PC: Angel über `start-web.bat` bzw. `start-handy.bat` öffnen. Am Handy: den QR-Code neu scannen (z. B. nach `--neuer-schluessel`). |
+| „Kein gültiger Zugangsschlüssel“ | Am PC: Angel über `start-web.bat` bzw. `start-handy.bat` öffnen. Am Handy: den QR-Code neu scannen (z. B. nachdem `daten\zugang.json` gelöscht wurde). |
+| „Angels Programmkern hat sich geändert“ | Erscheint einmal nach einem Update – dann ist alles in Ordnung. Hast du nichts aktualisiert, prüfe den Ordner `angel`. |
 | Vorlesen geht nicht / falsche Stimme | Das Vorlesen nutzt die Stimmen deines Geräts. Am PC unter Windows-Einstellungen → Zeit und Sprache → Sprache eine deutsche bzw. englische Sprachausgabe installieren. |
 
 ---
