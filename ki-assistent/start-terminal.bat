@@ -1,5 +1,5 @@
 @echo off
-rem Angel fuer PC UND Handy starten (Handy muss im selben WLAN sein). Fenster offen lassen.
+rem Angel im schwarzen Textfenster starten (ohne eigenes Fenster)
 chcp 65001 >nul
 cd /d "%~dp0"
 set "ANGEL_PY="
@@ -12,5 +12,5 @@ if not defined ANGEL_PY (
   pause
   exit /b 1
 )
-%ANGEL_PY% -m angel --web --handy %*
+%ANGEL_PY% -m angel --terminal %*
 if errorlevel 1 pause

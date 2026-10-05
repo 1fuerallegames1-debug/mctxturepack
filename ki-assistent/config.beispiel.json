@@ -21,8 +21,17 @@
   "arbeitsordner": "",
 
   "websuche": { "anbieter": "duckduckgo", "searxng_url": "" },
-  "handy_zugriff": false,
-  "web_port": 8765,
+  "oberflaeche": "fenster",
+  "sprachsteuerung": { "aktiv": true, "automatisch_senden": false },
 
-  "zusatz_anweisungen": ""
+  "zusatz_anweisungen": "",
+
+  "discord": {
+    "aktiv": false,
+    "bot_token": "",
+    "server_id": "",
+    "erlaubte_kanaele": [],
+    "nur_besitzer": true,
+    "besitzer_discord_id": ""
+  }
 }

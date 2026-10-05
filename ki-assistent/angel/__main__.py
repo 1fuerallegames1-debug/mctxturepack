@@ -1,4 +1,4 @@
-"""Startpunkt:  python -m angel  (Terminal)  oder  python -m angel --web  (Browser)."""
+"""Startpunkt:  python -m angel  (eigenes Fenster)  oder  python -m angel --terminal  (Textfenster)."""
 
 from __future__ import annotations
 
@@ -14,14 +14,9 @@ def main(argv=None) -> int:
         print("Angel braucht Python 3.9 oder neuer. Download: https://www.python.org/downloads/")
         return 1
     parser = argparse.ArgumentParser(prog="angel", description="Angel – deine eigene KI auf deinem PC")
-    parser.add_argument("--web", action="store_true", help="Oberfläche im Browser statt im Terminal")
+    parser.add_argument("--terminal", "--text", dest="terminal", action="store_true",
+                        help="im schwarzen Textfenster statt im eigenen Fenster starten")
     parser.add_argument("--modell", "--model", dest="modell", help="KI-Modell für diese Sitzung (z. B. qwen3:8b)")
-    parser.add_argument("--port", type=int, help="Port für die Browser-Oberfläche")
-    parser.add_argument("--handy", action="store_true",
-                        help="Browser-Oberfläche auch für Handy/Tablet im selben WLAN freigeben (mit QR-Code)")
-    parser.add_argument("--neuer-schluessel", action="store_true",
-                        help="neuen Zugangsschlüssel erzeugen (alte Links und QR-Codes werden ungültig)")
-    parser.add_argument("--kein-browser", action="store_true", help="Browser nicht automatisch öffnen")
     parser.add_argument("--version", action="version", version=f"Angel {__version__}")
     args = parser.parse_args(argv)
 
@@ -43,13 +38,19 @@ def main(argv=None) -> int:
         print(e)
         return 1
 
-    phone = args.handy or (args.web and bool(cfg.get("handy_zugriff")))
-    if args.web or args.handy:
-        from .web import run_web
+    use_window = not args.terminal and (cfg.get("oberflaeche") or "fenster").lower() == "fenster"
+    if use_window:
+        # Vor dem Fenster kurz prüfen, ob der KI-Server läuft (verständliche Meldung im Terminal)
         if not TerminalChat(agent).startup_check(web=True):
             return 1
-        return run_web(agent, open_browser=cfg.get("browser_oeffnen", True) and not args.kein_browser,
-                       port=args.port, phone=phone, renew_token=args.neuer_schluessel)
+        try:
+            from .gui import run_gui
+        except Exception as e:
+            print(f"Das Fenster konnte nicht geladen werden ({e}).")
+            print("Starte stattdessen im Textfenster. (Tkinter fehlt? Es gehört zur Python-Installation "
+                  "von python.org – dort beim Installieren 'tcl/tk and IDLE' aktiviert lassen.)")
+            return run_cli(agent)
+        return run_gui(agent)
     return run_cli(agent)
 
 

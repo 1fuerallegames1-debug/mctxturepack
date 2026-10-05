@@ -32,7 +32,16 @@ DANGEROUS = re.compile(
     r"|\bdel\s+/[sfq]|\bformat(\.com)?\s+[a-z]:|\bmkfs|\bdd\s+if=|\bdiskpart\b|\bshutdown\b"
     r"|\bbcdedit\b|\breg\s+delete\b|\bcipher\s+/w|\bStop-Computer\b|\bRestart-Computer\b"
     r"|\bClear-Disk\b|\bFormat-Volume\b|\bInitialize-Disk\b|\bvssadmin\s+delete|\bwbadmin\s+delete"
-    r"|\bClear-RecycleBin\b|\bSet-MpPreference\b[^\n]*-Disable|:\(\)\s*\{)",
+    r"|\bClear-RecycleBin\b|\bSet-MpPreference\b"
+    # Windows-/System-Einstellungen ändern -> immer nachfragen
+    r"|\breg(\.exe)?\s+(add|delete|import|load|unload)\b"
+    r"|\b(Set|New|Remove)-ItemProperty\b[^\n]*\bHK(LM|CU|EY|CR|U)\b"
+    r"|\b(sc|sc\.exe)\s+(config|delete|stop|start|failure)\b|\b(Set|Stop|Start|Restart)-Service\b"
+    r"|\bnetsh\b|\bpowercfg\b|\bSet-ExecutionPolicy\b|\bSet-TimeZone\b|\bSet-Date\b|\btzutil\b"
+    r"|\bnet\s+user\b|\b(New|Remove|Set)-LocalUser\b|\b(Add|Remove)-LocalGroupMember\b"
+    r"|\b(Enable|Disable)-(WindowsOptionalFeature|PnpDevice|NetAdapter|ComputerRestore|LocalUser)\b"
+    r"|\bDISM\b|\bbcdboot\b|\bslmgr\b|\bSet-NetFirewall|\bNew-NetFirewallRule\b"
+    r"|:\(\)\s*\{)",
     re.I,
 )
 # Python-Code, der Dateien löscht oder andere Programme startet: immer nachfragen

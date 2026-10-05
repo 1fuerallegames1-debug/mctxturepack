@@ -1,5 +1,6 @@
 @echo off
-rem Angel im Terminal starten (Doppelklick reicht)
+rem Angel starten (Doppelklick reicht). Angels Fenster oeffnet sich.
+rem Dieses schwarze Fenster offen lassen - es zeigt den Status.
 chcp 65001 >nul
 cd /d "%~dp0"
 set "ANGEL_PY="

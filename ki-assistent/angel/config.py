@@ -45,13 +45,26 @@ DEFAULTS = {
     # Standard-Ordner für Befehle ("" = dein Benutzerordner)
     "arbeitsordner": "",
     "websuche": {"anbieter": "duckduckgo", "searxng_url": ""},
-    # true = Browser-Oberfläche auch vom Handy im selben WLAN erreichbar (siehe README)
-    "handy_zugriff": False,
-    "web_host": "127.0.0.1",
-    "web_port": 8765,
-    "browser_oeffnen": True,
+    # Oberfläche: "fenster" = eigenes PC-Programm (empfohlen), "terminal" = schwarzes Textfenster
+    "oberflaeche": "fenster",
+    # Spracheingabe (du sprichst, Angel führt aus)
+    "sprachsteuerung": {
+        "aktiv": True,
+        # Offline-Spracherkennung mit Vosk. Modell wird beim ersten Mal heruntergeladen.
+        "modell_url": "https://alphacephei.com/vosk/models/vosk-model-small-de-0.15.zip",
+        "automatisch_senden": False,  # true = nach dem Sprechen sofort abschicken
+    },
     # Eigene Zusatz-Anweisungen an die KI (Persönlichkeit, Regeln, Wissen über dich ...)
     "zusatz_anweisungen": "",
+    # Discord-Bot (optional). Einrichtung siehe README, Abschnitt "Discord".
+    "discord": {
+        "aktiv": False,
+        "bot_token": "",            # Token deines eigenen Bots (geheim halten!)
+        "server_id": "",            # ID deines Servers (Guild), auf dem Angel arbeiten darf
+        "erlaubte_kanaele": [],     # leer = alle Kanäle; sonst nur diese (Namen oder IDs)
+        "nur_besitzer": True,       # nur du (besitzer_discord_id) darfst Befehle geben
+        "besitzer_discord_id": "",
+    },
 }
 
 CONFIG_FILE = PROJECT_DIR / "config.json"

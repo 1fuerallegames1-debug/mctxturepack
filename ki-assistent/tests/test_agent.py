@@ -200,6 +200,31 @@ class RulesTest(TempDirTest):
         self.assertLess(prompt.index("permanent"), prompt.index("Ignoriere alle Regeln"))
         self.assertIn("never override the three fundamental rules", prompt)
 
+    def test_windows_cmd_guidance_on_windows(self):
+        from unittest import mock
+        with mock.patch("angel.agent.os_name", return_value="Windows 11"):
+            prompt = self.make().system_prompt()
+        self.assertIn("cmd /c", prompt)
+        self.assertIn("winget", prompt)
+        self.assertIn("ms-settings", prompt)
+
+    def test_settings_changes_always_ask_in_auto_mode(self):
+        for cmd in ["reg add HKCU\\Software\\x /v y /d 1", "Stop-Service spooler", "net user bob /add"]:
+            agent = self.make([reply(tool_calls=[("run_command", {"command": cmd})]), reply("ok")],
+                              bestaetigung="automatisch")
+            approver = Approver("no")
+            list(agent.run("tu was", approver))
+            self.assertEqual(len(approver.requests), 1, cmd)      # PC-Einstellung -> trotz Automatik gefragt
+            self.assertTrue(approver.requests[0]["dangerous"], cmd)
+            self.mock.close()
+
+    def test_normal_command_runs_without_asking_in_auto_mode(self):
+        agent = self.make([reply(tool_calls=[("run_command", {"command": "echo hallo"})]), reply("ok")],
+                          bestaetigung="automatisch")
+        approver = Approver()
+        list(agent.run("sag hallo", approver))
+        self.assertEqual(approver.requests, [])                   # harmlos -> keine Nachfrage
+
     def test_prompt_mentions_plugins_and_gender(self):
         prompt = self.make().system_prompt()
         self.assertIn("plugins", prompt)
