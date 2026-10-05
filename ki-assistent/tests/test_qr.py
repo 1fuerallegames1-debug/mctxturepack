@@ -1,8 +1,8 @@
 import hashlib
 import unittest
 
-from kai import icons
-from kai.qr import QrCode
+from angel import icons
+from angel.qr import QrCode
 
 # Referenzwerte, erzeugt mit der Bibliothek "qrcode" (Byte-Modus, Fehlerkorrektur M, feste Maske)
 REFERENCE_A_MASK0 = [

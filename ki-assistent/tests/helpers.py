@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from kai.config import DEFAULTS
+from angel.config import DEFAULTS
 
 
 def make_cfg(tmp: Path, **overrides) -> dict:
@@ -20,7 +20,7 @@ def make_cfg(tmp: Path, **overrides) -> dict:
 
 class TempDirTest(unittest.TestCase):
     def setUp(self):
-        self.tmp = Path(tempfile.mkdtemp(prefix="kai-test-"))
+        self.tmp = Path(tempfile.mkdtemp(prefix="angel-test-"))
         self.work = self.tmp / "work"
         self.work.mkdir(parents=True, exist_ok=True)
 

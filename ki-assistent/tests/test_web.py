@@ -4,8 +4,8 @@ import threading
 import time
 import unittest
 
-from kai.agent import Agent
-from kai.web import WebApp, load_token
+from angel.agent import Agent
+from angel.web import WebApp, load_token
 from tests.helpers import TempDirTest, make_cfg
 from tests.mock_llm import MockLLM, reply
 
@@ -30,7 +30,7 @@ class WebTest(TempDirTest):
         conn = http.client.HTTPConnection("127.0.0.1", self.app.port, timeout=40)
         headers = {}
         if token:
-            headers["X-Kai-Token"] = token
+            headers["X-Angel-Token"] = token
         if host:
             headers["Host"] = host
         data = None
@@ -169,8 +169,8 @@ class LocalWebTest(WebTest):
             self.assertEqual(json.loads(resp.read())["start_url"], "/")
 
     def test_history_shows_stopped_and_refused_tools_correctly(self):
-        from kai.agent import NOT_RUN_NOTE
-        from kai.regeln import PROTECTED_MESSAGE
+        from angel.agent import NOT_RUN_NOTE
+        from angel.regeln import PROTECTED_MESSAGE
         self.agent.history = [
             {"role": "user", "content": "x"},
             {"role": "assistant", "content": "", "tool_calls": [
@@ -205,13 +205,13 @@ class PhoneWebTest(WebTest):
 
 class PhoneAutoModeTest(PhoneWebTest):
     def test_auto_mode_cannot_be_enabled_from_the_network(self):
-        from kai.web import local_ips
+        from angel.web import local_ips
         ips = local_ips()
         if not ips:
             self.skipTest("keine Netzwerk-Adresse")
         conn = http.client.HTTPConnection(ips[0], self.app.port, timeout=10)
         conn.request("POST", "/api/settings", body=json.dumps({"auto": True}),
-                     headers={"X-Kai-Token": "geheim-schluessel-1234567890", "Content-Type": "application/json"})
+                     headers={"X-Angel-Token": "geheim-schluessel-1234567890", "Content-Type": "application/json"})
         resp = conn.getresponse()
         self.assertEqual(resp.status, 403)
         self.assertFalse(self.agent.auto_mode)

@@ -8,10 +8,10 @@ import zipfile
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-from kai.config import ConfigError, load_config, save_setting
-from kai.tools import ToolContext, ToolError, ToolRegistry, truncate
-from kai.tools import files, system, web
-from kai.tools.memory import Memory
+from angel.config import ConfigError, load_config, save_setting
+from angel.tools import ToolContext, ToolError, ToolRegistry, truncate
+from angel.tools import files, system, web
+from angel.tools.memory import Memory
 from tests.helpers import TempDirTest, make_cfg
 
 

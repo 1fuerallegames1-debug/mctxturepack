@@ -135,7 +135,7 @@ class WebApp:
     # ------------------------------------------------------------ Server
 
     def make_server(self) -> ThreadingHTTPServer:
-        handler = type("Handler", (KaiHandler,), {"app": self})
+        handler = type("Handler", (AngelHandler,), {"app": self})
         last_error = None
         for port in ([0] if self.port == 0 else range(self.port, self.port + 20)):
             try:
@@ -264,9 +264,9 @@ class WebApp:
                 "tailscale": [u for u in urls if _is_tailscale(urlsplit(u).hostname or "")]}
 
 
-class KaiHandler(BaseHTTPRequestHandler):
+class AngelHandler(BaseHTTPRequestHandler):
     app: WebApp = None  # wird in make_server gesetzt
-    server_version = "Kai"
+    server_version = "Angel"
     protocol_version = "HTTP/1.0"
 
     def log_message(self, fmt, *args):  # keine Zugriffsprotokolle in der Konsole
@@ -283,7 +283,7 @@ class KaiHandler(BaseHTTPRequestHandler):
         return _is_loopback(hostname)
 
     def _authorized(self) -> bool:
-        token = self.headers.get("X-Kai-Token", "")
+        token = self.headers.get("X-Angel-Token", "")
         return bool(token) and secrets.compare_digest(token.encode(), self.app.token.encode())
 
     def _security_headers(self):

@@ -1,6 +1,6 @@
 """Verbindung zum lokalen KI-Modell (Ollama oder ein OpenAI-kompatibler Server).
 
-Intern verwendet Kai überall dasselbe Nachrichtenformat:
+Intern wird überall dasselbe Nachrichtenformat verwendet:
   {"role": "system" | "user", "content": str}
   {"role": "assistant", "content": str, "thinking": str,
    "tool_calls": [{"id": str, "name": str, "arguments": dict | None, "raw_arguments": str}]}
@@ -21,7 +21,7 @@ import uuid
 from typing import Iterator
 from urllib.parse import urlsplit
 
-USER_AGENT = "Kai-Assistent/1.0"
+USER_AGENT = "Angel-Assistent/1.0"
 
 
 class LLMError(Exception):

@@ -3,7 +3,7 @@ import socket
 import threading
 import unittest
 
-from kai.llm import (LLMError, OllamaClient, OpenAIClient, ThinkTagFilter, extract_text_tool_calls,
+from angel.llm import (LLMError, OllamaClient, OpenAIClient, ThinkTagFilter, extract_text_tool_calls,
                      make_client)
 from tests.helpers import TempDirTest, make_cfg
 from tests.mock_llm import MockLLM, reply
@@ -127,7 +127,7 @@ class OllamaClientTest(TempDirTest):
 
     def test_abort_while_model_is_loading(self):
         import time
-        from kai.llm import Cancelled
+        from angel.llm import Cancelled
         mock = MockLLM([reply("spät", header_delay=5)])
         cancel = threading.Event()
         try:
@@ -157,7 +157,7 @@ class OllamaClientTest(TempDirTest):
             gen = client.chat_stream([{"role": "user", "content": "hi"}], TOOLS, cancel)
             next(gen)
             cancel.set()
-            from kai.llm import Cancelled
+            from angel.llm import Cancelled
             with self.assertRaises(Cancelled):
                 for _ in gen:
                     pass

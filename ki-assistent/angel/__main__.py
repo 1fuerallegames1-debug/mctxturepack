@@ -1,4 +1,4 @@
-"""Startpunkt:  python -m kai  (Terminal)  oder  python -m kai --web  (Browser)."""
+"""Startpunkt:  python -m angel  (Terminal)  oder  python -m angel --web  (Browser)."""
 
 from __future__ import annotations
 
@@ -11,9 +11,9 @@ from .config import ConfigError, load_config
 
 def main(argv=None) -> int:
     if sys.version_info < (3, 9):
-        print("Kai braucht Python 3.9 oder neuer. Download: https://www.python.org/downloads/")
+        print("Angel braucht Python 3.9 oder neuer. Download: https://www.python.org/downloads/")
         return 1
-    parser = argparse.ArgumentParser(prog="kai", description="Kai – dein lokaler KI-Assistent")
+    parser = argparse.ArgumentParser(prog="angel", description="Angel – deine eigene KI auf deinem PC")
     parser.add_argument("--web", action="store_true", help="Oberfläche im Browser statt im Terminal")
     parser.add_argument("--modell", "--model", dest="modell", help="KI-Modell für diese Sitzung (z. B. qwen3:8b)")
     parser.add_argument("--port", type=int, help="Port für die Browser-Oberfläche")
@@ -22,7 +22,7 @@ def main(argv=None) -> int:
     parser.add_argument("--neuer-schluessel", action="store_true",
                         help="neuen Zugangsschlüssel erzeugen (alte Links und QR-Codes werden ungültig)")
     parser.add_argument("--kein-browser", action="store_true", help="Browser nicht automatisch öffnen")
-    parser.add_argument("--version", action="version", version=f"Kai {__version__}")
+    parser.add_argument("--version", action="version", version=f"Angel {__version__}")
     args = parser.parse_args(argv)
 
     try:

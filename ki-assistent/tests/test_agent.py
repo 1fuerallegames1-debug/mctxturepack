@@ -1,7 +1,7 @@
 import threading
 import unittest
 
-from kai.agent import DENIED_MESSAGE, Agent
+from angel.agent import DENIED_MESSAGE, Agent
 from tests.helpers import Approver, TempDirTest, make_cfg
 from tests.mock_llm import MockLLM, reply
 
@@ -207,12 +207,12 @@ class RulesTest(TempDirTest):
         self.assertIn("Always answer in Englisch", self.make(sprache="Englisch").system_prompt())
 
     def test_core_is_protected_without_asking(self):
-        from kai.regeln import PROTECTED_DIR
+        from angel.regeln import PROTECTED_DIR
         target = PROTECTED_DIR / "regeln.py"
         before = target.read_text(encoding="utf-8")
         agent = self.make([
             reply(tool_calls=[("write_file", {"path": str(target), "content": "REGELN = ()"})]),
-            reply(tool_calls=[("run_command", {"command": "echo x > kai/regeln.py"})]),
+            reply(tool_calls=[("run_command", {"command": "echo x > angel/regeln.py"})]),
             reply(tool_calls=[("run_python", {"code": f"open(r'{PROTECTED_DIR / 'agent.py'}', 'w')"})]),
             reply("Das darf ich nicht."),
         ], bestaetigung="automatisch")
@@ -225,7 +225,7 @@ class RulesTest(TempDirTest):
         self.assertEqual(target.read_text(encoding="utf-8"), before)
 
     def test_plugins_folder_is_allowed(self):
-        from kai.regeln import blocked_reason
+        from angel.regeln import blocked_reason
         agent = self.make()
         self.assertIsNone(blocked_reason("write_file", {"path": str(self.work / "plugins" / "x.py")}, agent.ctx))
         self.assertIsNone(blocked_reason("run_command", {"command": "dir"}, agent.ctx))
@@ -263,8 +263,8 @@ class RobustnessTest(TempDirTest):
                            reply("fertig")])
         approver = Approver("always", "no")
         from unittest import mock
-        with mock.patch("kai.tools.system.os.startfile", create=True), \
-                mock.patch("kai.tools.system.subprocess.Popen"):
+        with mock.patch("angel.tools.system.os.startfile", create=True), \
+                mock.patch("angel.tools.system.subprocess.Popen"):
             list(agent.run("öffne", approver))
         # notepad nur einmal gefragt, calc wieder gefragt
         self.assertEqual([r["args"]["target"] for r in approver.requests], ["notepad", "calc"])
@@ -311,7 +311,7 @@ class RobustnessTest(TempDirTest):
         thinking = [m for m in msgs if m.get("thinking")]
         self.assertLessEqual(len(thinking), 1)
         budget = agent._budget(agent.registry.schemas())
-        from kai.agent import _estimate_tokens
+        from angel.agent import _estimate_tokens
         self.assertLessEqual(sum(_estimate_tokens(m) for m in msgs[1:]), max(1500, budget))
         self.assertEqual(len(agent.history), 13)  # der echte Verlauf bleibt unverändert
 
@@ -353,7 +353,7 @@ class TrustTest(TempDirTest):
         self.assertEqual([f["text"] for f in agent.memory.facts], ["Ich heiße Alex"])
 
     def test_config_and_plugins_always_ask_even_in_auto_mode(self):
-        from kai.config import PROJECT_DIR
+        from angel.config import PROJECT_DIR
         agent = self.make([reply(tool_calls=[("write_file", {"path": str(PROJECT_DIR / "config.json"),
                                                              "content": "{}"})]),
                            reply(tool_calls=[("write_file", {"path": str(PROJECT_DIR / "plugins" / "x.py"),

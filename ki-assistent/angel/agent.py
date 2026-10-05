@@ -1,4 +1,4 @@
-"""Das "Gehirn" von Kai: Gesprächsverlauf, Anweisungen an das Modell und die Werkzeug-Schleife.
+"""Das "Gehirn" von Angel: Gesprächsverlauf, Anweisungen an das Modell und die Werkzeug-Schleife.
 
 Ablauf einer Anfrage:
   1. Deine Nachricht kommt in den Verlauf.

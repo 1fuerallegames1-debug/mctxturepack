@@ -1,8 +1,8 @@
 import unittest
 from unittest import mock
 
-from kai.agent import Agent
-from kai.cli import TerminalChat
+from angel.agent import Agent
+from angel.cli import TerminalChat
 from tests.helpers import TempDirTest, make_cfg
 from tests.mock_llm import MockLLM, reply
 
@@ -73,20 +73,20 @@ class CliTest(TempDirTest):
         self.assertEqual(agent.history[-1]["content"], "Aborted by the user before it ran.")
 
     def test_windows_line_endings_are_not_shown_as_codes(self):
-        from kai.cli import safe
+        from angel.cli import safe
         self.assertEqual(safe("a\r\nb\x1b[31m"), "a\nb\\x1b[31m")
 
     def test_missing_model_can_be_downloaded(self):
         agent = self.make(models=["anderes:latest"], modell="qwen3:8b")
         chat = ScriptedChat(agent, ["j"])
-        with mock.patch("kai.cli.save_setting"):
+        with mock.patch("angel.cli.save_setting"):
             self.assertTrue(chat.startup_check())
         self.assertIn("Fertig", chat.text)
 
     def test_missing_model_pick_installed_one(self):
         agent = self.make(models=["anderes:latest"], modell="qwen3:8b")
         chat = ScriptedChat(agent, ["n", "1"])
-        with mock.patch("kai.cli.save_setting") as saved:
+        with mock.patch("angel.cli.save_setting") as saved:
             self.assertTrue(chat.startup_check())
         self.assertEqual(agent.client.model, "anderes:latest")
         saved.assert_called_once_with("modell", "anderes:latest")

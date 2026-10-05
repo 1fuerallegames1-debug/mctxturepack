@@ -8,7 +8,7 @@ import os
 import shutil
 from pathlib import Path
 
-# Ordner "ki-assistent" (eine Ebene über dem Paket "kai")
+# Ordner "ki-assistent" (eine Ebene über dem Paket "angel")
 PROJECT_DIR = Path(__file__).resolve().parent.parent
 
 DEFAULTS = {
@@ -99,18 +99,18 @@ def load_config(path: Path | None = None) -> dict:
     cfg = _merge(DEFAULTS, user)
 
     # Umgebungsvariablen haben Vorrang (praktisch zum schnellen Testen)
-    if os.environ.get("KAI_MODELL"):
-        cfg["modell"] = os.environ["KAI_MODELL"]
-    if os.environ.get("KAI_SERVER_URL"):
-        cfg["server_url"] = os.environ["KAI_SERVER_URL"]
+    if os.environ.get("ANGEL_MODELL"):
+        cfg["modell"] = os.environ["ANGEL_MODELL"]
+    if os.environ.get("ANGEL_SERVER_URL"):
+        cfg["server_url"] = os.environ["ANGEL_SERVER_URL"]
 
     cfg["data_dir"] = str(data_dir())
     return cfg
 
 
 def data_dir() -> Path:
-    """Ordner für Gedächtnis, Sicherungskopien usw. (KAI_DATEN überschreibt den Ort)."""
-    d = Path(os.environ.get("KAI_DATEN") or (PROJECT_DIR / "daten"))
+    """Ordner für Gedächtnis, Sicherungskopien usw. (ANGEL_DATEN überschreibt den Ort)."""
+    d = Path(os.environ.get("ANGEL_DATEN") or (PROJECT_DIR / "daten"))
     d.mkdir(parents=True, exist_ok=True)
     return d
 

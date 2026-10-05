@@ -1,4 +1,4 @@
-"""Beispiel-Plugin: So bringst du Kai neue Fähigkeiten bei.
+"""Beispiel-Plugin: So bringst du Angel neue Fähigkeiten bei.
 
 Jede .py-Datei in diesem Ordner wird beim Start automatisch geladen.
 Kopiere diese Datei, ändere Name, Beschreibung und Code – fertig.
@@ -8,7 +8,7 @@ Wichtig:
 - Der Name muss eindeutig sein und darf nur a-z, 0-9 und _ enthalten.
 - Die Beschreibung liest das KI-Modell, um zu entscheiden, wann es das Werkzeug nutzt.
   Auf Englisch funktioniert das mit den meisten Modellen am zuverlässigsten.
-- confirm=True: Kai fragt vor jeder Ausführung um Erlaubnis (für alles, was etwas verändert!).
+- confirm=True: Angel fragt vor jeder Ausführung um Erlaubnis (für alles, was etwas verändert!).
 - Die Funktion bekommt immer zuerst "ctx" (Einstellungen, Arbeitsordner, ...) und gibt Text zurück.
 """
 
@@ -16,7 +16,7 @@ import json
 import urllib.parse
 import urllib.request
 
-from kai.tools import ToolError, tool
+from angel.tools import ToolError, tool
 
 
 @tool(

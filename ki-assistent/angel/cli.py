@@ -94,7 +94,7 @@ class TerminalChat:
 
     def startup_check(self, web: bool = False) -> bool:
         s, agent = self.s, self.agent
-        self.out(f"{s.bold}{s.cyan}{self.name}{s.reset} – dein lokaler KI-Assistent  {s.dim}(v{__version__}){s.reset}")
+        self.out(f"{s.bold}{s.cyan}{self.name}{s.reset} – deine eigene KI  {s.dim}(v{__version__}){s.reset}")
         for err in agent.plugin_errors:
             self.out(f"{s.yellow}{err}{s.reset}")
         try:

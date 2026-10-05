@@ -1,8 +1,8 @@
-"""Werkzeug-System: alles, was Kai auf deinem PC tun kann, ist hier als "Werkzeug" registriert.
+"""Werkzeug-System: alles, was Angel auf deinem PC tun kann, ist hier als "Werkzeug" registriert.
 
 Eigene Werkzeuge kannst du im Ordner "plugins" anlegen (siehe plugins/beispiel_wetter.py):
 
-    from kai.tools import tool
+    from angel.tools import tool
 
     @tool("mein_werkzeug", "Was das Werkzeug tut (auf Englisch versteht das Modell es am besten).",
           {"text": {"type": "string", "description": "..."}}, required=["text"])
@@ -230,13 +230,13 @@ def load_plugins(folder: Path) -> list[str]:
     for file in sorted(folder.glob("*.py")):
         if file.name.startswith("_"):
             continue
-        mod_name = f"kai_plugin_{file.stem}"
+        mod_name = f"angel_plugin_{file.stem}"
         try:
             spec = importlib.util.spec_from_file_location(mod_name, file)
             module = importlib.util.module_from_spec(spec)
             sys.modules[mod_name] = module
             spec.loader.exec_module(module)
-        except Exception as e:  # ein kaputtes Plugin soll Kai nicht lahmlegen
+        except Exception as e:  # ein kaputtes Plugin soll Angel nicht lahmlegen
             sys.modules.pop(mod_name, None)
             errors.append(f"Plugin {file.name} konnte nicht geladen werden: {e}")
     for name, func in builtin.items():

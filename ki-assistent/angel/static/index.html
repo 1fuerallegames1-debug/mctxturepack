@@ -170,7 +170,7 @@ const store = {
 class HttpError extends Error { constructor(msg, status) { super(msg); this.status = status; } }
 
 async function api(path, body) {
-  const opts = { method: body === undefined ? "GET" : "POST", headers: { "X-Kai-Token": token }, cache: "no-store" };
+  const opts = { method: body === undefined ? "GET" : "POST", headers: { "X-Angel-Token": token }, cache: "no-store" };
   if (body !== undefined) { opts.headers["Content-Type"] = "application/json"; opts.body = JSON.stringify(body); }
   let res;
   try { res = await fetch(path, opts); }

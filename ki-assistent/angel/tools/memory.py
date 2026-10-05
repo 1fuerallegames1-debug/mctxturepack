@@ -1,4 +1,4 @@
-"""Langzeitgedächtnis: Dinge, die sich Kai über dich merken soll (bleibt nach dem Neustart erhalten)."""
+"""Langzeitgedächtnis: Dinge, die sich Angel über dich merken soll (bleibt nach dem Neustart erhalten)."""
 
 from __future__ import annotations
 
