@@ -1,0 +1,43 @@
+{
+  "_hinweis": "Deine Einstellungen. Erklärung aller Werte: siehe README.md (Abschnitt 'Einstellungen').",
+  "name": "Angel",
+  "dein_name": "",
+  "sprache": "Deutsch und Englisch",
+  "geschlecht": "weiblich",
+
+  "anbieter": "ollama",
+  "modell": "hermes3:8b",
+  "server_url": "http://127.0.0.1:11434",
+  "kontext_laenge": 16384,
+  "temperatur": 0.6,
+  "denken": null,
+  "denken_anzeigen": false,
+  "im_speicher_halten": "30m",
+
+  "bestaetigung": "automatisch",
+  "immer_erlauben": [],
+  "deaktivierte_werkzeuge": [],
+  "max_schritte": 25,
+  "befehl_timeout": 120,
+  "arbeitsordner": "",
+
+  "websuche": { "anbieter": "duckduckgo", "searxng_url": "" },
+  "oberflaeche": "fenster",
+  "sprachsteuerung": { "aktiv": true, "automatisch_senden": false },
+  "google": { "aktiv": false, "client_id": "", "client_secret": "" },
+  "browser": { "aktiv": false, "sichtbar": true },
+  "web_browser": "opera gx",
+  "medien_ordner": "D:\\FAG Angel\\Gespeicherter Stuff\\Medien",
+  "programmiersprachen": ["Python", "Java"],
+
+  "zusatz_anweisungen": "",
+
+  "discord": {
+    "aktiv": false,
+    "bot_token": "",
+    "server_id": "",
+    "erlaubte_kanaele": [],
+    "nur_besitzer": true,
+    "besitzer_discord_id": ""
+  }
+}
