@@ -14,7 +14,7 @@
   "denken_anzeigen": false,
   "im_speicher_halten": "30m",
 
-  "bestaetigung": "nachfragen",
+  "bestaetigung": "automatisch",
   "immer_erlauben": [],
   "deaktivierte_werkzeuge": [],
   "max_schritte": 25,

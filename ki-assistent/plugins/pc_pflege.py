@@ -107,6 +107,47 @@ def _powershell(ps: str, timeout: int) -> str:
 
 # --------------------------------------------------------------------------- Aufräumen
 
+_ENERGIE = {
+    "neustart": (["shutdown", "/r", "/t", "0"], "PC neu starten"),
+    "herunterfahren": (["shutdown", "/s", "/t", "0"], "PC herunterfahren"),
+    "abmelden": (["shutdown", "/l"], "Benutzer abmelden"),
+    "sperren": (["rundll32.exe", "user32.dll,LockWorkStation"], "Bildschirm sperren"),
+    "schlaf": (["rundll32.exe", "powrprof.dll,SetSuspendState", "0,1,0"], "PC in den Ruhezustand"),
+}
+
+
+def _energie_confirm(ctx, args):
+    # Neustart/Herunterfahren/Abmelden schliessen Programme -> immer kurz bestaetigen.
+    a = str(args.get("aktion", "")).lower()
+    return "always" if a in ("neustart", "herunterfahren", "abmelden") else False
+
+
+@tool(
+    "pc_energie",
+    "Restart, shut down, log off, lock or put the Windows PC to sleep. When the owner tells you to do any of "
+    "these ('starte meinen PC neu', 'fahr runter', 'sperr den Bildschirm'), use THIS tool and just do it - "
+    "do NOT explain Start-menu steps.",
+    {"aktion": {"type": "string", "enum": ["neustart", "herunterfahren", "abmelden", "sperren", "schlaf"],
+                "description": "neustart=restart, herunterfahren=shutdown, abmelden=log off, sperren=lock, "
+                               "schlaf=sleep."}},
+    required=["aktion"],
+    confirm=_energie_confirm,
+    summary=lambda a: _ENERGIE.get(str(a.get("aktion", "")).lower(), (None, "PC-Energieaktion"))[1],
+)
+def pc_energie(ctx, aktion):
+    a = str(aktion or "").lower()
+    if a not in _ENERGIE:
+        raise ToolError("Unbekannte Aktion. Möglich: neustart, herunterfahren, abmelden, sperren, schlaf.")
+    if os.name != "nt":
+        raise ToolError("Das geht nur unter Windows.")
+    cmd, beschreibung = _ENERGIE[a]
+    try:
+        subprocess.Popen(cmd)
+    except OSError as e:
+        raise ToolError(f"Konnte die Aktion nicht ausführen: {e}") from None
+    return f"{beschreibung} wurde ausgelöst."
+
+
 @tool("speicherplatz", "Show free and used disk space on the main drive.", {})
 def speicherplatz(ctx):
     pfad = os.environ.get("SystemDrive", "C:") + "\\" if os.name == "nt" else "/"

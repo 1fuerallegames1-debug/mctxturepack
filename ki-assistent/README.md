@@ -126,12 +126,14 @@ Links im Fenster ist deine **Chat-Verlauf-Leiste**: alle gespeicherten Gespräch
 
 ## Sicherheit: wann Angel nachfragt
 
-Angel kann auf deinem PC wirklich etwas tun. Es gibt zwei Modi (`bestaetigung` in `config.json`):
+Angel kann auf deinem PC wirklich etwas tun und ist im **Tun-Modus**: Angel **handelt**, statt dir
+Anleitungen zu geben. Es gibt zwei Modi (`bestaetigung` in `config.json`):
 
-- **`"nachfragen"` (Standard):** Vor **jeder** verändernden Aktion zeigt Angel dir genau, was sie tun
-  will, und wartet auf dein „Ja“.
-- **`"automatisch"`:** Angel handelt ohne Nachfrage – **außer bei kritischen Dingen, die immer
-  nachgefragt werden**, auch in diesem Modus:
+- **`"automatisch"` (Standard = Tun-Modus):** Angel führt alles **ohne Nachfrage** aus – **außer bei den
+  wenigen kritischen Dingen, die immer kurz nachgefragt werden** (ein Klick, siehe Liste unten).
+- **`"nachfragen"`:** vorsichtiger – vor **jeder** verändernden Aktion fragt Angel zuerst.
+
+Immer nachgefragt (auch im Tun-Modus):
   - Daten vernichten (ganze Ordner löschen, formatieren, Datenträger, Papierkorb leeren …)
   - **PC-Einstellungen ändern:** Registry (`reg add/delete`), Dienste (`Stop-Service`, `sc config`),
     Netzwerk (`netsh`), Benutzerkonten (`net user`), Firewall, Energie, Windows-Funktionen, Defender,

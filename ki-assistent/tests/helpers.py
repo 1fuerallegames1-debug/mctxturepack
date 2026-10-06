@@ -13,7 +13,8 @@ def make_cfg(tmp: Path, **overrides) -> dict:
     cfg = copy.deepcopy(DEFAULTS)
     (tmp / "daten").mkdir(parents=True, exist_ok=True)
     (tmp / "work").mkdir(parents=True, exist_ok=True)
-    cfg.update(data_dir=str(tmp / "daten"), arbeitsordner=str(tmp / "work"), modell="test")
+    cfg.update(data_dir=str(tmp / "daten"), arbeitsordner=str(tmp / "work"), modell="test",
+               bestaetigung="nachfragen")  # Tests prüfen beide Modi explizit; Standard hier deterministisch
     cfg.update(overrides)
     return cfg
 

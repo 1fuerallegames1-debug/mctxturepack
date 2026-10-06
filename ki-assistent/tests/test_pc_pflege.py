@@ -77,6 +77,23 @@ class PcPflegeTest(TempDirTest):
         self.assertFalse(self.reg.get("speicherplatz").confirm)
         self.assertFalse(self.reg.get("viren_status").confirm)
 
+    def test_pc_energie_bestaetigung(self):
+        t = self.reg.get("pc_energie")
+        self.assertIsNotNone(t)
+        self.assertEqual(t.needs_confirmation(self.ctx, {"aktion": "neustart"}), "always")
+        self.assertEqual(t.needs_confirmation(self.ctx, {"aktion": "herunterfahren"}), "always")
+        self.assertFalse(t.needs_confirmation(self.ctx, {"aktion": "sperren"}))
+
+    def test_pc_energie_unbekannte_aktion(self):
+        with self.assertRaises(ToolError):
+            self.run_tool("pc_energie", aktion="explodieren")
+
+    @unittest.skipIf(os.name == "nt", "nur auf Nicht-Windows prüfbar")
+    def test_pc_energie_nur_windows(self):
+        with self.assertRaises(ToolError) as e:
+            self.run_tool("pc_energie", aktion="neustart")
+        self.assertIn("Windows", str(e.exception))
+
     @unittest.skipIf(os.name == "nt", "Defender-Fehlerpfad nur auf Nicht-Windows prüfbar")
     def test_defender_nur_windows(self):
         for name in ("virenscan", "viren_status", "viren_entfernen", "virenschutz_aktualisieren"):

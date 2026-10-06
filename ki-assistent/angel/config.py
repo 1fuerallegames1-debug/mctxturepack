@@ -37,9 +37,10 @@ DEFAULTS = {
     # KI-Modell nach der letzten Nutzung so lange im (Grafik-)Speicher halten – dann startet die nächste
     # Antwort ohne Ladezeit. "30m" = 30 Minuten, "-1" = dauerhaft, "0" = sofort entladen.
     "im_speicher_halten": "30m",
-    # "nachfragen" = vor jeder Aktion am PC um Erlaubnis bitten (empfohlen)
-    # "automatisch" = alles ohne Rückfrage ausführen (auf eigene Gefahr!)
-    "bestaetigung": "nachfragen",
+    # "automatisch" = Tun-Modus: Angel führt alles ohne Rückfrage aus, fragt NUR noch bei den wenigen
+    #   kritischen Dingen kurz nach (Daten löschen, PC-Einstellungen/Neustart, Discord-Ban/Kick,
+    #   E-Mail senden/löschen). "nachfragen" = vor jeder verändernden Aktion fragen (vorsichtiger).
+    "bestaetigung": "automatisch",
     # Werkzeuge, die nie nachfragen sollen, z. B. ["open_item"]
     "immer_erlauben": [],
     # Werkzeuge, die komplett abgeschaltet sein sollen, z. B. ["run_python"]

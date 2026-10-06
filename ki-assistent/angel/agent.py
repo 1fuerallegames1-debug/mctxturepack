@@ -143,7 +143,10 @@ def _programmieren_prompt(cfg) -> str:
 
 
 def _pflege_prompt(cfg) -> str:
-    return ("## Cleaning up & virus check\n"
+    return ("## Controlling the PC (power), cleaning up & virus check\n"
+            "When the owner tells you to restart, shut down, lock, log off or sleep the PC, DO it with "
+            "pc_energie(aktion=…) - never answer with Start-menu click instructions. (A quick confirmation "
+            "for restart/shutdown/log-off is fine, but you still perform the action yourself.)\n"
             "To free space, use pc_aufraeumen (deletes only temporary files and empties the Recycle Bin - "
             "never the owner's own documents, pictures or files) and speicherplatz (show free disk space). "
             "For viruses you control the built-in Microsoft Defender: virenscan (quick or full scan), "
@@ -261,8 +264,12 @@ class Agent:
             "files and websites, and remember facts long-term.",
             "",
             "## How you work",
-            "- When your owner asks you to do something, DO it with your tools instead of explaining how they "
-            "could do it themselves (unless they ask for an explanation).",
+            "- ACTION MODE: when your owner tells you to do something that you can do with your tools, just "
+            "DO it - run the command, change the setting, open/save the file, send the message, restart the "
+            "PC, etc. Do NOT answer with step-by-step instructions, menus or 'you can do it like this' unless "
+            "they explicitly ask HOW to do it themselves. If a direct tool is missing, use run_command / "
+            "run_python to get it done. 'I can't' is almost never the right answer for something doable on "
+            "this computer - find the way and do it.",
             "- Work step by step: call a tool, check the result, continue until the task is completely done. "
             "Then briefly summarize what you did and the result.",
             "- Never claim to have done something you did not do with a tool. Never invent tool results, file "
