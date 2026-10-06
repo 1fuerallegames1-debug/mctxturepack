@@ -6,10 +6,19 @@ richtig sein – sonst zerstört Angel sich selbst: es löscht seine EIGENEN Dat
 (Gedächtnis, gespeicherte Konto-Zugänge, Browser-Logins) und sperrt sich
 dauerhaft. So kann niemand Fremdes Angel oder die verbundenen Konten benutzen.
 
-Wichtig: Angel fasst dabei NUR den eigenen Datenordner an. Dateien, Programme
-oder Einstellungen des restlichen Geräts werden nie verändert oder gelöscht –
-das schützt dich davor, dass ein versehentlicher Fehlversuch deine eigenen
-Sachen vernichtet.
+Wichtig: Angel fasst dabei NUR den eigenen Datenordner an – und selbst das nur,
+wenn dieser Ordner plausibel ein dedizierter Datenordner ist (niemals Home, der
+Projektordner, ein übergeordneter Ordner oder die Laufwerkswurzel). Dateien,
+Programme oder Einstellungen des restlichen Geräts werden nie verändert oder
+gelöscht – das schützt dich davor, dass ein versehentlicher Fehlversuch deine
+eigenen Sachen vernichtet.
+
+Der Fehlversuch-Zähler wird signiert (HMAC) und beim Lesen geprüft. Wer die
+Zählerdatei verändert oder unbeschreibbar macht, löst damit die Selbstzerstörung
+aus, statt beliebig oft raten zu können. (Ein Angreifer mit vollem Dateizugriff
+kann die Datei zwar löschen und so den Zähler zurücksetzen – dann hätte er aber
+ohnehin direkten Zugriff auf die Dateien; ZUGANG zu Angel oder den Konten gewinnt
+er dadurch nie, denn das Passwort bleibt nötig.)
 
 Das Passwort steht nirgends im Klartext. Gespeichert ist nur ein gesalzener
 PBKDF2-Hash; aus ihm lässt sich das Passwort praktisch nicht zurückrechnen.
@@ -36,6 +45,7 @@ _ERWARTETER_HASH = "b090d3e7c69a6a2951f7b9701567556bae34592e99dba2d804a1b6442253
 
 _STATUS_DATEI = "sicherheit.json"
 _SPERR_DATEI = "gesperrt.marker"
+_PROJECT_DIR = Path(__file__).resolve().parent.parent  # Ordner "ki-assistent"
 
 
 def _hash(passwort: str) -> str:
@@ -55,36 +65,64 @@ def _sperr_datei(data_dir: Path) -> Path:
     return Path(data_dir) / _SPERR_DATEI
 
 
+def _signatur(n: int) -> str:
+    return hmac.new(_SALT, f"fehlversuche={int(n)}".encode("utf-8"), hashlib.sha256).hexdigest()
+
+
 def ist_gesperrt(data_dir: Path) -> bool:
     """True, wenn Angel sich nach zu vielen Fehlversuchen selbst gesperrt hat."""
     return _sperr_datei(data_dir).exists()
 
 
 def fehlversuche(data_dir: Path) -> int:
-    try:
-        n = int(json.loads(_status_datei(data_dir).read_text(encoding="utf-8")).get("fehlversuche", 0))
-        return max(0, n)
-    except (OSError, ValueError, TypeError):
+    """Anzahl der bisherigen Fehlversuche.
+
+    Fehlt die Datei, sind es 0 (normaler erster Start). Ist sie vorhanden, aber
+    defekt oder manipuliert (Signatur passt nicht), wird fail-closed MAX_VERSUCHE
+    zurückgegeben – das löst beim nächsten Schritt die Selbstzerstörung aus.
+    """
+    p = _status_datei(data_dir)
+    if not p.exists():
         return 0
+    try:
+        daten = json.loads(p.read_text(encoding="utf-8"))
+        n = int(daten.get("fehlversuche", 0))
+        sig = str(daten.get("sig", ""))
+    except (OSError, ValueError, TypeError):
+        return MAX_VERSUCHE
+    if n < 0 or not hmac.compare_digest(sig, _signatur(n)):
+        return MAX_VERSUCHE
+    return min(n, MAX_VERSUCHE)
 
 
 def verbleibende_versuche(data_dir: Path) -> int:
     return max(0, MAX_VERSUCHE - fehlversuche(data_dir))
 
 
-def _schreibe_fehlversuche(data_dir: Path, n: int) -> None:
+def _schreibe_fehlversuche(data_dir: Path, n: int) -> bool:
+    """Schreibt den (signierten) Zählerstand und bestätigt durch Rücklesen.
+
+    Rückgabe True nur, wenn der Wert wirklich dauerhaft gespeichert wurde.
+    """
     p = _status_datei(data_dir)
     try:
         p.parent.mkdir(parents=True, exist_ok=True)
-        p.write_text(json.dumps({"fehlversuche": int(n)}), encoding="utf-8")
+        p.write_text(json.dumps({"fehlversuche": int(n), "sig": _signatur(n)}), encoding="utf-8")
     except OSError:
-        pass
+        return False
+    return fehlversuche(data_dir) == int(n)
 
 
 def registriere_fehlschlag(data_dir: Path) -> int:
-    """Zählt einen Fehlversuch hoch und gibt die neue Gesamtzahl zurück."""
+    """Zählt einen Fehlversuch hoch und gibt die (wirksame) Gesamtzahl zurück.
+
+    Lässt sich der neue Stand nicht dauerhaft speichern (Datei/Ordner
+    schreibgeschützt o. Ä.), wird MAX_VERSUCHE zurückgegeben – damit kann ein
+    unbeschreibbar gemachter Zähler kein unbegrenztes Raten erlauben.
+    """
     n = fehlversuche(data_dir) + 1
-    _schreibe_fehlversuche(data_dir, n)
+    if not _schreibe_fehlversuche(data_dir, n):
+        return MAX_VERSUCHE
     return n
 
 
@@ -93,27 +131,59 @@ def zuruecksetzen(data_dir: Path) -> None:
     _schreibe_fehlversuche(data_dir, 0)
 
 
+def _ist_sicherer_datenordner(data_dir: Path) -> bool:
+    """True nur für einen plausiblen, dedizierten Datenordner.
+
+    Verweigert ausdrücklich Home, Projektordner, Laufwerkswurzel sowie jeden
+    Ordner, der einen dieser wichtigen Orte enthält (Elternordner).
+    """
+    try:
+        d = Path(data_dir).resolve()
+    except OSError:
+        return False
+    if d == Path(d.anchor or d):  # Laufwerkswurzel / Dateisystem-Wurzel
+        return False
+    tabu = [_PROJECT_DIR]
+    try:
+        tabu.append(Path.home().resolve())
+    except (OSError, RuntimeError):
+        pass
+    for t in tabu:
+        if d == t:
+            return False
+        try:
+            t.relative_to(d)  # d ist Elternordner eines wichtigen Ordners -> zu breit
+            return False
+        except ValueError:
+            pass
+    return True
+
+
 def selbstzerstoerung(data_dir: Path) -> None:
     """Löscht AUSSCHLIESSLICH Angels eigenen Datenordner und sperrt den Start dauerhaft.
 
     Es wird nur der Inhalt von data_dir entfernt (Gedächtnis, Konto-Zugänge,
-    Browser-Profil, Statusdateien). Nichts außerhalb dieses Ordners wird berührt.
+    Browser-Profil, Statusdateien) – und das auch nur, wenn data_dir ein
+    plausibler dedizierter Datenordner ist. Verzeichnis-Symlinks werden nicht
+    verfolgt. Nichts außerhalb von data_dir wird je berührt. In jedem Fall wird
+    der Sperr-Marker gesetzt, damit Angel nicht mehr startet.
     """
     data_dir = Path(data_dir)
+    if _ist_sicherer_datenordner(data_dir):
+        try:
+            if data_dir.exists():
+                for kind in list(data_dir.iterdir()):
+                    try:
+                        if kind.is_dir() and not kind.is_symlink():
+                            shutil.rmtree(kind, ignore_errors=True)
+                        else:
+                            kind.unlink()
+                    except OSError:
+                        pass
+        except OSError:
+            pass
     try:
-        if data_dir.exists():
-            for kind in list(data_dir.iterdir()):
-                try:
-                    if kind.is_dir() and not kind.is_symlink():
-                        shutil.rmtree(kind, ignore_errors=True)
-                    else:
-                        kind.unlink()
-                except OSError:
-                    pass
         data_dir.mkdir(parents=True, exist_ok=True)
-    except OSError:
-        pass
-    try:
         _sperr_datei(data_dir).write_text("gesperrt", encoding="utf-8")
     except OSError:
         pass
@@ -137,7 +207,10 @@ def pruefe_start(data_dir: Path, frage_passwort, melde=None) -> str:
     Rückgabe: FREIGEGEBEN, ABGEBROCHEN, GESPERRT oder ZERSTOERT.
     """
     data_dir = Path(data_dir)
-    data_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        data_dir.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        pass
 
     if ist_gesperrt(data_dir):
         if melde:

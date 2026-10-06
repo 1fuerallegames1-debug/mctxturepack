@@ -431,25 +431,5 @@ def run_cli(agent: Agent) -> int:
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[attr-defined]
     except Exception:
         pass
-
-    # Passwortschloss: ohne richtiges Passwort tut Angel nichts.
-    import getpass
-
-    from . import sicherheit
-
-    def _frage_passwort(rest):
-        try:
-            return getpass.getpass(f"Passwort (noch {rest} Versuch(e), danach loescht sich Angel): ")
-        except (EOFError, KeyboardInterrupt):
-            return None
-
-    def _melde_sperre(code):
-        if code == sicherheit.GESPERRT:
-            print("Angel ist gesperrt und hat seine Daten geloescht. Bitte Angel neu installieren.")
-        elif code == sicherheit.ZERSTOERT:
-            print("Fuenf falsche Passwoerter. Angel hat seine eigenen Daten geloescht und sich gesperrt.")
-
-    if sicherheit.pruefe_start(agent.ctx.data_dir, _frage_passwort, _melde_sperre) != sicherheit.FREIGEGEBEN:
-        return 0
-
+    # Das Passwortschloss läuft zentral in __main__.main(), BEVOR der Agent gebaut wird.
     return TerminalChat(agent).loop() or 0
