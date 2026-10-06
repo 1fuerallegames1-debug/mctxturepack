@@ -99,6 +99,28 @@ kannst dann die Tastatur-Diktierfunktion deines Systems nutzen (Windows: **Win+H
 
 ---
 
+## Passwort beim Start
+
+Gleich beim **ersten Start** – und bei jedem weiteren – verlangt Angel ein **Passwort**. Solange es
+nicht stimmt, tut Angel **gar nichts** (kein Chat, keine Werkzeuge).
+
+- Du hast **fünf Versuche**. Spätestens der fünfte muss richtig sein.
+- Nach dem fünften falschen Passwort **zerstört Angel sich selbst**: Angel löscht seine **eigenen
+  Daten** (Gedächtnis, gespeicherte Google-/Discord-Zugänge, Browser-Logins) und **sperrt sich
+  dauerhaft**. Danach kann niemand Fremdes Angel oder deine verbundenen Konten mehr benutzen; um Angel
+  wieder zu nutzen, musst du es neu installieren.
+- Dabei wird **ausschließlich Angels eigener Ordner** angefasst. Deine übrigen Dateien, Programme und
+  Windows-Einstellungen bleiben unberührt – ein versehentlicher Fehlversuch kann also nie deine eigenen
+  Sachen vernichten.
+
+Das Passwort steht **nirgends im Klartext**. Gespeichert ist nur ein gesalzener Prüfwert (PBKDF2-Hash)
+in `angel/sicherheit.py`; daraus lässt sich das Passwort praktisch nicht zurückrechnen. Die Datei
+gehört zum geschützten Programmkern – Angel selbst darf sie nicht verändern.
+
+> Passwort ändern? Sag mir Bescheid, dann baue ich dir deinen neuen Prüfwert ein.
+
+---
+
 ## Sicherheit: wann Angel nachfragt
 
 Angel kann auf deinem PC wirklich etwas tun. Es gibt zwei Modi (`bestaetigung` in `config.json`):
@@ -361,6 +383,7 @@ ki-assistent/
 ├── daten/                                        Gedächtnis, Sicherungen, Sprachmodell (automatisch)
 └── angel/
     ├── regeln.py        die drei Grundregeln (fest eingebaut)
+    ├── sicherheit.py    Passwort beim Start + Selbstsperre (fest eingebaut)
     ├── agent.py         Gespräch, Anweisungen, Werkzeug-Schleife, Nachfragen
     ├── llm.py           Verbindung zu Ollama / OpenAI-kompatiblen Servern
     ├── gui.py           das PC-Fenster

@@ -94,8 +94,40 @@ def run_gui(agent) -> int:
     import tkinter as tk
     from tkinter import font as tkfont
 
-    from . import voice
+    from . import sicherheit, voice
     from .regeln import REGELN
+
+    # Passwortschloss: bevor irgendetwas passiert, muss das richtige Passwort kommen.
+    _gate_root = tk.Tk()
+    _gate_root.withdraw()
+    try:
+        from tkinter import messagebox, simpledialog
+
+        def _frage_passwort(rest):
+            return simpledialog.askstring(
+                "Angel – Passwort",
+                "Bitte Passwort eingeben.\n"
+                f"Noch {rest} Versuch(e) – danach löscht Angel seine eigenen Daten und sperrt sich.",
+                show="*", parent=_gate_root)
+
+        def _melde_sperre(code):
+            if code == sicherheit.GESPERRT:
+                messagebox.showerror(
+                    "Angel ist gesperrt",
+                    "Angel wurde nach zu vielen falschen Passwörtern gesperrt und hat seine "
+                    "eigenen Daten gelöscht. Bitte Angel neu installieren.", parent=_gate_root)
+            elif code == sicherheit.ZERSTOERT:
+                messagebox.showerror(
+                    "Angel hat sich gesperrt",
+                    "Fünf falsche Passwörter. Angel hat seine eigenen Daten (Gedächtnis, "
+                    "Konto-Zugänge, Browser-Logins) gelöscht und sich dauerhaft gesperrt.",
+                    parent=_gate_root)
+
+        _ergebnis = sicherheit.pruefe_start(agent.ctx.data_dir, _frage_passwort, _melde_sperre)
+    finally:
+        _gate_root.destroy()
+    if _ergebnis != sicherheit.FREIGEGEBEN:
+        return 0
 
     cfg = agent.cfg
     name = cfg.get("name") or "Angel"

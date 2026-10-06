@@ -129,7 +129,7 @@ def blocked_reason(tool_name: str, args: dict, ctx) -> str | None:
 PROJECT_DIR = PROTECTED_DIR.parent
 SENSITIVE_NAMES = ("config.json", "config.beispiel.json", "start.bat", "start-web.bat", "start-handy.bat",
                    "start.sh")
-DATA_FILES = ("zugang.json", "gedaechtnis.json")
+DATA_FILES = ("zugang.json", "gedaechtnis.json", "sicherheit.json", "gesperrt.marker")
 SENSITIVE_WARNING = ("ACHTUNG: Das ändert Angels Einstellungen, Plugins oder Startdateien. Damit ließen sich "
                      "Sicherheitsabfragen abschalten – nur erlauben, wenn du das wirklich willst.")
 
