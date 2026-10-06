@@ -13,6 +13,7 @@ Angel ist dafür im Autostart.
 
 from __future__ import annotations
 
+import calendar
 import json
 import secrets
 import threading
@@ -57,11 +58,23 @@ def _tag_passt(d: date, wiederholung: str, wochentag, ziel_tag) -> bool:
     if wiederholung == "woechentlich":
         return wochentag is not None and d.weekday() == int(wochentag)
     if wiederholung == "monatlich":
-        return ziel_tag is not None and d.day == ziel_tag
+        if ziel_tag is None:
+            return False
+        # kurze Monate: der 31. wird z. B. im Februar auf den letzten Tag gelegt
+        letzter = calendar.monthrange(d.year, d.month)[1]
+        return d.day == min(int(ziel_tag), letzter)
     return False
 
 
-def naechste_ausfuehrung(now: datetime, uhrzeit="", wiederholung="", wochentag=None, datum=None):
+def _monatstag(now, datum, monatstag):
+    """Zieltag im Monat für 'monatlich' – aus gespeichertem Wert, sonst Datum, sonst heute."""
+    if monatstag is not None and str(monatstag).lstrip("-").isdigit():
+        return int(monatstag)
+    tag = _parse_datum(datum)
+    return tag.day if tag else now.day
+
+
+def naechste_ausfuehrung(now: datetime, uhrzeit="", wiederholung="", wochentag=None, datum=None, monatstag=None):
     """Nächster Zeitpunkt als datetime – oder None, wenn einmalig & in der Vergangenheit."""
     h, m = _parse_uhrzeit(uhrzeit)
     w = (wiederholung or "").strip().lower()
@@ -72,10 +85,7 @@ def naechste_ausfuehrung(now: datetime, uhrzeit="", wiederholung="", wochentag=N
             return kand if kand > now else kand + timedelta(days=1)
         kand = datetime.combine(tag, time(h, m))  # festes Datum: in der Vergangenheit -> None
         return kand if kand > now else None
-    ziel_tag = None
-    if w == "monatlich":
-        tag = _parse_datum(datum)
-        ziel_tag = tag.day if tag else now.day
+    ziel_tag = _monatstag(now, datum, monatstag) if w == "monatlich" else None
     for offset in range(0, 400):
         d = now.date() + timedelta(days=offset)
         if _tag_passt(d, w, wochentag, ziel_tag):
@@ -129,7 +139,11 @@ class Aufgaben:
     def hinzufuegen(self, text, typ="erinnerung", uhrzeit="", wiederholung="",
                     wochentag=None, datum=None, now=None) -> dict:
         now = now or datetime.now()
-        naechste = naechste_ausfuehrung(now, uhrzeit, wiederholung, wochentag, datum)
+        w = (wiederholung or "").strip().lower()
+        # Bei 'monatlich' den Zieltag JETZT festhalten, damit ein später/nachgeholter Lauf
+        # ihn nicht aus now.day neu (falsch) ableitet.
+        mt = _monatstag(now, datum, None) if w == "monatlich" else None
+        naechste = naechste_ausfuehrung(now, uhrzeit, wiederholung, wochentag, datum, monatstag=mt)
         if naechste is None:
             raise ValueError("Der Zeitpunkt liegt in der Vergangenheit – bitte einen späteren wählen.")
         wt = None
@@ -140,8 +154,9 @@ class Aufgaben:
             "text": (text or "").strip(),
             "typ": "auftrag" if typ == "auftrag" else "erinnerung",
             "uhrzeit": "%02d:%02d" % _parse_uhrzeit(uhrzeit),
-            "wiederholung": (wiederholung or "").strip().lower(),
+            "wiederholung": w,
             "wochentag": wt,
+            "monatstag": mt,
             "datum": _iso_datum(datum),
             "naechste": naechste.isoformat(timespec="minutes"),
             "aktiv": True,
@@ -183,7 +198,8 @@ class Aufgaben:
                 if w in ("", "einmalig"):
                     t["aktiv"] = False
                 else:
-                    nxt = naechste_ausfuehrung(now, t.get("uhrzeit", ""), w, t.get("wochentag"), t.get("datum"))
+                    nxt = naechste_ausfuehrung(now, t.get("uhrzeit", ""), w, t.get("wochentag"),
+                                               t.get("datum"), monatstag=t.get("monatstag"))
                     if nxt is None:
                         t["aktiv"] = False
                     else:

@@ -15,6 +15,13 @@ def _store(ctx):
     return hole_aufgaben(ctx.data_dir / "aufgaben.json")
 
 
+def _confirm_bei_fremden_inhalten(ctx, args):
+    # Nur nachfragen, wenn in dieser Aufgabe schon fremde Inhalte gelesen wurden (E-Mail, Webseite …).
+    # So kann eine manipulierte Nachricht keine heimlichen (später unbeaufsichtigten) Aufträge einschleusen;
+    # ein direkter Wunsch von dir läuft weiterhin ohne Rückfrage.
+    return bool(getattr(ctx, "untrusted_seen", False))
+
+
 def _wann(iso: str) -> str:
     try:
         return datetime.fromisoformat(iso).strftime("%d.%m.%Y %H:%M")
@@ -44,6 +51,7 @@ def _wann(iso: str) -> str:
         "wochentag": {"type": "integer", "description": "Only for woechentlich: 0=Monday .. 6=Sunday."},
     },
     required=["text", "uhrzeit"],
+    confirm=_confirm_bei_fremden_inhalten,
 )
 def aufgabe_planen(ctx, text, uhrzeit, typ="erinnerung", datum=None, wiederholung="", wochentag=None):
     if not (text or "").strip():
@@ -76,6 +84,7 @@ def aufgaben_anzeigen(ctx):
     "Cancel and remove a scheduled reminder or task by its id (see aufgaben_anzeigen).",
     {"id": {"type": "string", "description": "The task id to cancel."}},
     required=["id"],
+    confirm=_confirm_bei_fremden_inhalten,
 )
 def aufgabe_absagen(ctx, id):
     if _store(ctx).entfernen(str(id)):

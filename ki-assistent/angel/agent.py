@@ -36,7 +36,7 @@ DANGER_WARNINGS = {
 }
 FAILED_EXIT = re.compile(r"^Exit-Code: (?!0$)", re.M)
 # Diese Schutzabfragen gelten auch im Automatik-Modus (gegen manipulierte Webseiten/Dateien)
-GUARDED_IN_AUTO = {"fetch_webpage", "open_item", "remember", "forget"}
+GUARDED_IN_AUTO = {"fetch_webpage", "open_item", "remember", "forget", "aufgabe_planen", "aufgabe_absagen"}
 EXPIRED_MESSAGE = ("Your owner did not answer the approval request in time (they may be away). "
                    "Do not retry now - ask again when they are back.")
 RULE3_DISPLAY = "Abgelehnt (Regel 3): Angel darf ihren Programmkern und ihre Grundregeln nicht verändern."

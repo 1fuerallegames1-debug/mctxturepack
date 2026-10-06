@@ -96,22 +96,28 @@ class ChatController:
             return False
 
         def approve(req: dict) -> str:
-            # Geplante Aufgaben laufen ohne Rückfrage; kritische (gefährliche) werden NICHT
-            # unbeaufsichtigt ausgeführt, sondern ausgelassen.
-            return "no" if req.get("dangerous") else "yes"
+            # Unbeaufsichtigter Lauf: der Agent ruft approve nur für GEFÄHRLICHE (immer-nachfragen)
+            # und injektionsgefährdete Werkzeuge (fetch_webpage, open_item, remember/forget …) auf.
+            # Ohne Aufsicht werden diese alle abgelehnt – so kann z. B. eine manipulierte E-Mail Angel
+            # nicht zu heimlichen Web-Abrufen oder Programmstarts verleiten. Normale Aktionen (eine
+            # Nachricht schicken, eine Datei schreiben) fragen hier ohnehin nicht und laufen weiter.
+            return "no"
 
         def worker():
             self.events.put({"type": "busy_an"})
             self.events.put({"type": "user", "text": text})
-            prev = self.agent.auto_mode
+            prev_auto = self.agent.auto_mode
+            prev_history = self.agent.history
             self.agent.auto_mode = True
+            self.agent.history = []  # isoliert: verschmutzt den Nutzer-Chat nicht und umgekehrt
             try:
                 for ev in self.agent.run(text, approve):
                     self.events.put(ev)
             except Exception as e:
                 self.events.put({"type": "error", "message": f"Interner Fehler: {type(e).__name__}: {e}"})
             finally:
-                self.agent.auto_mode = prev
+                self.agent.auto_mode = prev_auto
+                self.agent.history = prev_history
                 self.events.put({"type": "end"})
                 self.busy.release()
 
@@ -334,7 +340,7 @@ def run_gui(agent) -> int:
         return "break"
 
     def new_chat():
-        if state["busy"]:
+        if controller.running():  # verbindlicher Lock-Zustand (auch bei Hintergrund-Aufgaben korrekt)
             write("Bitte zuerst die laufende Aufgabe stoppen.", "info")
             return
         agent.reset()
