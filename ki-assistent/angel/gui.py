@@ -144,9 +144,10 @@ def run_gui(agent) -> int:
     mic = voice.Microphone(agent.ctx.data_dir, sv.get("modell_url")
                            or "https://alphacephei.com/vosk/models/vosk-model-small-de-0.15.zip")
 
-    # Farben (heller/dunkler Modus einfach gehalten)
-    BG, PANEL, TEXT, MUTED, ACCENT = "#15181c", "#1d2126", "#e6e9ed", "#98a2ad", "#8b85ff"
-    USER, OKC, ERRC, WARN = "#2a2750", "#4cc27c", "#f07070", "#f0c75e"
+    # Farben – dunkles "Neon/Terminal"-Design (hochtechnisch)
+    BG, PANEL, FIELD = "#0a0e14", "#0f1621", "#0c1322"
+    TEXT, MUTED, ACCENT, ACCENT2 = "#e8eef5", "#5f7288", "#22d3ee", "#a78bfa"
+    USER, OKC, ERRC, WARN = "#102234", "#34d399", "#f87171", "#fbbf24"
 
     root = tk.Tk()
     root.title(name)
@@ -162,19 +163,27 @@ def run_gui(agent) -> int:
         pass
 
     base = tkfont.nametofont("TkDefaultFont")
-    base.configure(size=11)
+    base.configure(family="Segoe UI", size=11)
     mono = tkfont.Font(family="Consolas", size=10)
     bold = base.copy()
     bold.configure(weight="bold")
+    title_font = base.copy()
+    title_font.configure(size=15, weight="bold")
 
-    # Kopfzeile
+    # Kopfzeile mit Neon-Glow-Linie
     head = tk.Frame(root, bg=PANEL)
     head.pack(fill="x")
-    tk.Label(head, text=f"😇 {name}", bg=PANEL, fg=TEXT, font=bold).pack(side="left", padx=10, pady=8)
-    mode = "automatisch" if agent.auto_mode else "mit Nachfrage"
-    tk.Label(head, text=f"{agent.client.model}  ·  {mode}", bg=PANEL, fg=MUTED).pack(side="left")
-    tk.Button(head, text="Neu", command=lambda: new_chat(), bg=PANEL, fg=TEXT,
-              relief="flat", activebackground=USER).pack(side="right", padx=8)
+    tk.Label(head, text="⬡", bg=PANEL, fg=ACCENT, font=title_font).pack(side="left", padx=(12, 3), pady=(10, 8))
+    tk.Label(head, text=name, bg=PANEL, fg=TEXT, font=title_font).pack(side="left", pady=(10, 8))
+    mode = "AUTO" if agent.auto_mode else "SICHER"
+    status_lbl = tk.Label(head, text="● online", bg=PANEL, fg=OKC, font=mono)
+    status_lbl.pack(side="left", padx=(16, 0), pady=(13, 8))
+    tk.Label(head, text=f"{agent.client.model} · {mode}", bg=PANEL, fg=MUTED,
+             font=mono).pack(side="left", padx=10, pady=(13, 8))
+    tk.Button(head, text="＋ Neu", command=lambda: new_chat(), bg=PANEL, fg=ACCENT, font=mono,
+              relief="flat", bd=0, activebackground=PANEL, activeforeground=ACCENT2,
+              cursor="hand2").pack(side="right", padx=12)
+    tk.Frame(root, bg=ACCENT, height=2).pack(fill="x")  # leuchtende Trennlinie
 
     # Chatbereich
     wrap = tk.Frame(root, bg=BG)
@@ -185,38 +194,45 @@ def run_gui(agent) -> int:
     chat.configure(yscrollcommand=scroll.set)
     scroll.pack(side="right", fill="y")
     chat.pack(side="left", fill="both", expand=True)
-    chat.tag_configure("user", foreground="#c9c6ff", justify="right", spacing1=8, spacing3=2, lmargin1=80)
-    chat.tag_configure("assistant", foreground=TEXT, spacing1=6, spacing3=2)
-    chat.tag_configure("name", foreground=ACCENT, font=bold, spacing1=8)
-    chat.tag_configure("tool", foreground=MUTED, font=mono, spacing1=2)
-    chat.tag_configure("ok", foreground=OKC, font=mono)
-    chat.tag_configure("err", foreground=ERRC, font=mono)
-    chat.tag_configure("info", foreground=MUTED, spacing1=4)
-    chat.tag_configure("reminder", foreground=WARN, font=bold, spacing1=8, spacing3=2)
+    chat.tag_configure("user", foreground="#d6fbff", background=USER, justify="right",
+                       spacing1=8, spacing3=6, lmargin1=90, rmargin=8)
+    chat.tag_configure("assistant", foreground=TEXT, spacing1=6, spacing3=2, lmargin1=6, lmargin2=6)
+    chat.tag_configure("name", foreground=ACCENT, font=bold, spacing1=10)
+    chat.tag_configure("tool", foreground=ACCENT2, font=mono, spacing1=2, lmargin1=8, lmargin2=22)
+    chat.tag_configure("ok", foreground=OKC, font=mono, lmargin1=8)
+    chat.tag_configure("err", foreground=ERRC, font=mono, lmargin1=8)
+    chat.tag_configure("info", foreground=MUTED, font=mono, spacing1=4)
+    chat.tag_configure("reminder", foreground=WARN, background="#1d1704", font=bold, spacing1=8, spacing3=6)
 
     # Transkript-Zeile (zeigt, was per Sprache verstanden wurde)
-    heard = tk.Label(root, text="", bg=BG, fg=WARN, anchor="w")
-    heard.pack(fill="x", padx=12)
+    heard = tk.Label(root, text="", bg=BG, fg=ACCENT, anchor="w", font=mono)
+    heard.pack(fill="x", padx=14)
 
-    # Eingabezeile
+    # Eingabezeile mit leuchtendem Rahmen (wird bei Fokus cyan)
     foot = tk.Frame(root, bg=PANEL)
     foot.pack(fill="x")
-    entry = tk.Text(foot, height=2, bg="#262b31", fg=TEXT, insertbackground=TEXT, relief="flat",
-                    wrap="word", font=base, padx=8, pady=6)
-    entry.pack(side="left", fill="both", expand=True, padx=(10, 6), pady=10)
-    mic_btn = tk.Button(foot, text="🎤", width=3, relief="flat", bg=PANEL, fg=TEXT, activebackground=USER)
+    entry = tk.Text(foot, height=2, bg=FIELD, fg=TEXT, insertbackground=ACCENT, relief="flat",
+                    wrap="word", font=base, padx=10, pady=7,
+                    highlightthickness=1, highlightbackground="#1e2a3c", highlightcolor=ACCENT)
+    entry.pack(side="left", fill="both", expand=True, padx=(12, 6), pady=10)
+
+    def _tech_btn(text):
+        return tk.Button(foot, text=text, width=3, relief="flat", bd=0, bg=PANEL, fg=MUTED,
+                         activebackground=PANEL, activeforeground=ACCENT, cursor="hand2")
+
+    mic_btn = _tech_btn("🎤")
     mic_btn.pack(side="left", padx=2, pady=10)
     pic_btn = None
     if sehen_aktiv(cfg):
-        pic_btn = tk.Button(foot, text="📎", width=3, relief="flat", bg=PANEL, fg=TEXT, activebackground=USER)
+        pic_btn = _tech_btn("📎")
         pic_btn.pack(side="left", padx=2, pady=10)
-    send_btn = tk.Button(foot, text="Senden", bg=ACCENT, fg="#0d1117", relief="flat", width=9,
-                         activebackground="#a39dff")
-    send_btn.pack(side="right", padx=(6, 10), pady=10)
+    send_btn = tk.Button(foot, text="SENDEN ➤", bg=ACCENT, fg="#06131a", relief="flat", bd=0, width=11,
+                         font=bold, activebackground=ACCENT2, activeforeground="#06131a", cursor="hand2")
+    send_btn.pack(side="right", padx=(6, 12), pady=10)
 
-    hint = tk.Label(root, text="Enter = senden · Umschalt+Enter = neue Zeile · kritische Aktionen "
-                               "werden per Knopf bestätigt", bg=PANEL, fg=MUTED, anchor="w")
-    hint.pack(fill="x")
+    hint = tk.Label(root, text="  Enter = senden   ·   Umschalt+Enter = neue Zeile   ·   kritische Aktionen "
+                               "werden bestätigt", bg=PANEL, fg=MUTED, anchor="w", font=mono)
+    hint.pack(fill="x", ipady=3)
 
     state = {"busy": False, "stream": False, "approvals": {}}
 
@@ -326,7 +342,12 @@ def run_gui(agent) -> int:
 
     def set_busy(b):
         state["busy"] = b
-        send_btn.configure(text="Stopp" if b else "Senden", bg=ERRC if b else ACCENT)
+        send_btn.configure(text="◼ STOPP" if b else "SENDEN ➤", bg=ERRC if b else ACCENT,
+                           activebackground="#dc5d5d" if b else ACCENT2)
+        try:
+            status_lbl.configure(text="⬢ arbeitet…" if b else "● online", fg=ACCENT if b else OKC)
+        except Exception:
+            pass
 
     # ---- Senden / Stoppen
     def do_send(event=None):
