@@ -119,6 +119,16 @@ def _planer_prompt(cfg) -> str:
             "owner. Scheduled tasks only fire while Angel is running (Angel is in autostart).")
 
 
+def _pflege_prompt(cfg) -> str:
+    return ("## Cleaning up & virus check\n"
+            "To free space, use pc_aufraeumen (deletes only temporary files and empties the Recycle Bin - "
+            "never the owner's own documents, pictures or files) and speicherplatz (show free disk space). "
+            "For viruses you control the built-in Microsoft Defender: virenscan (quick or full scan), "
+            "viren_status (status and what it found), viren_entfernen (remove the found threats), "
+            "virenschutz_aktualisieren (update definitions). Deleting files and removing threats always ask "
+            "first. The Defender tools work only on Windows.")
+
+
 def _lernen_prompt(cfg) -> str:
     if not (cfg.get("lernen") or {}).get("aktiv", True):
         return ""
@@ -272,8 +282,8 @@ class Agent:
                       "'cmd', 'explorer') or a full path to an .exe. For files and folders, prefer find_files and open_item.",
                       "- Windows 11 specifics: right-click gives a compact menu ('Show more options' for the full one); "
                       "the Start menu and search are opened with the Windows key; drives are C:, D: etc."]
-        for block in (_planer_prompt(cfg), _lernen_prompt(cfg), _sehen_prompt(cfg), _discord_prompt(cfg),
-                      _google_prompt(cfg), _browser_prompt(cfg)):
+        for block in (_planer_prompt(cfg), _lernen_prompt(cfg), _pflege_prompt(cfg), _sehen_prompt(cfg),
+                      _discord_prompt(cfg), _google_prompt(cfg), _browser_prompt(cfg)):
             if block:
                 lines += ["", block]
         weekday = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")[today.weekday()]

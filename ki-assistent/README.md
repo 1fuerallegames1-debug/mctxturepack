@@ -309,6 +309,21 @@ verlangst es. Im Automatik-Modus laufen auch Klicks ohne Nachfrage – überlege
 
 ---
 
+## PC säubern & Virenschutz
+
+Sag „**mach meinen PC sauber**" oder „**wie viel Platz habe ich noch?**" – Angel hilft beim Aufräumen und
+steuert den Virenschutz.
+
+- 🧹 **Aufräumen** (`pc_aufraeumen`): löscht **nur temporäre Dateien** (älter als ein Tag) und leert den
+  **Papierkorb**. Deine Dokumente, Bilder und sonstigen Dateien werden **nie** angefasst. Vorher wird
+  immer nachgefragt. „Wie viel Platz habe ich?" zeigt den freien Speicher.
+- 🛡️ **Viren**: Angel steuert den **echten, in Windows eingebauten Microsoft Defender** (keinen eigenen
+  Scanner): „**mach einen Virenscan**" (schnell oder vollständig), „**ist mein PC sauber?**" (Status +
+  gefundene Bedrohungen), „**entferne die Viren**" (Bedrohungen entfernen – wird vorher bestätigt),
+  Virendefinitionen aktualisieren. Der Virenschutz-Teil funktioniert nur unter Windows.
+
+---
+
 ## Welches Modell passt zu meinem PC?
 
 Wie viel Grafikspeicher (VRAM) du hast, zeigt der Task-Manager → Leistung → GPU.
