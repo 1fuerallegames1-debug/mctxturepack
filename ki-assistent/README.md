@@ -187,6 +187,24 @@ Modell, sagt Angel dir, wie du es mit einem Befehl nachinstallierst (`ollama pul
 
 ---
 
+## Erinnern & Lernen
+
+Angel merkt sich wichtige Dinge **von selbst** – Namen, Personen (Familie, Freunde, Team), deine
+Vorlieben, Termine, Entscheidungen, wo etwas liegt – und nutzt das in späteren Gesprächen wieder. Du
+kannst natürlich auch sagen „merk dir, dass …" oder „vergiss Nr. 3".
+
+- **Automatisch, aber sicher:** Angel lernt nur aus **euren Gesprächen**. Dinge aus **fremden Inhalten**
+  (E-Mails, Webseiten, Nachrichten anderer – auch vom Discord-Server) speichert Angel **nicht** einfach so,
+  sondern fragt vorher – so kann dich niemand über eine manipulierte Nachricht „umprogrammieren".
+- **Du hast die Kontrolle:** „Was weißt du über mich?" zeigt alles (im Textmodus: `/gedaechtnis`),
+  „vergiss Nr. 5" löscht einen Eintrag. Alles steht lesbar in `daten/gedaechtnis.json`.
+- Einträge sind nach **Kategorie** sortiert (Person, Vorliebe, Aufgabe, Datum, Notiz); ältere Dinge findet
+  Angel per Stichwort-Suche wieder.
+- Passwörter und Geheimnisse merkt Angel sich bewusst **nicht**. Abschalten: in `config.json` unter
+  `lernen` → `aktiv` auf `false` (dann merkt sich Angel nur noch, was du ausdrücklich sagst).
+
+---
+
 ## Discord
 
 Angel steuert einen **eigenen Bot** – niemals deinen persönlichen Account (das wäre bei Discord

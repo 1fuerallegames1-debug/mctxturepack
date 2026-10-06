@@ -55,17 +55,28 @@ class Memory:
             json.dump(self.facts, f, ensure_ascii=False, indent=1)
         tmp.replace(self.path)
 
-    def add(self, text: str) -> dict:
+    def add(self, text: str, kategorie: str = "") -> dict:
         text = " ".join(text.split())
+        kategorie = " ".join((kategorie or "").split())[:30]
         with self._lock:
             for fact in self.facts:
                 if fact["text"].lower() == text.lower():
                     return fact
             new_id = max((f.get("id", 0) for f in self.facts), default=0) + 1
             fact = {"id": new_id, "text": text, "datum": _dt.date.today().isoformat()}
+            if kategorie:
+                fact["kategorie"] = kategorie
             self.facts.append(fact)
             self.save()
             return fact
+
+    def suchen(self, query: str, limit: int = 20) -> list:
+        q = (query or "").lower().strip()
+        if not q:
+            return []
+        treffer = [f for f in self.facts
+                   if q in f.get("text", "").lower() or q in f.get("kategorie", "").lower()]
+        return treffer[-limit:]
 
     def remove(self, fact_id: int) -> dict | None:
         with self._lock:
@@ -78,7 +89,12 @@ class Memory:
 
     def prompt_text(self) -> str:
         facts = self.facts[-MAX_FACTS_IN_PROMPT:]
-        return "\n".join(f"[{f.get('id')}] {f.get('text', '')}" for f in facts)
+        return "\n".join(_zeile(f) for f in facts)
+
+
+def _zeile(f: dict) -> str:
+    kat = f.get("kategorie", "")
+    return f"[{f.get('id')}] " + (f"({kat}) " if kat else "") + f.get("text", "")
 
 
 @tool(
@@ -86,18 +102,36 @@ class Memory:
     "Save an important fact about the user or their preferences to long-term memory, so you still "
     "know it in future conversations (e.g. names, preferences, where things are, recurring tasks). "
     "Use it when the user tells you something worth remembering or explicitly asks you to remember.",
-    {"fact": {"type": "string", "description": "The fact, written as a short complete sentence."}},
+    {"fact": {"type": "string", "description": "The fact, written as a short complete sentence."},
+     "kategorie": {"type": "string",
+                   "description": "Optional short category, e.g. Person, Vorliebe, Aufgabe, Datum, Notiz."}},
     required=["fact"],
-    # Nach dem Lesen fremder Inhalte (Webseiten, Dateien ...) erst fragen – sonst könnten diese
-    # dauerhaft falsche "Fakten" in Angels Gedächtnis schreiben.
+    # Nach dem Lesen fremder Inhalte (Webseiten, Dateien, Nachrichten anderer ...) erst fragen – sonst
+    # könnten diese dauerhaft falsche "Fakten" in Angels Gedächtnis schreiben.
     confirm=lambda ctx, a: bool(ctx.untrusted_seen),
     summary=lambda a: f"Dauerhaft merken: {a.get('fact', '')}",
 )
-def remember(ctx, fact: str):
+def remember(ctx, fact: str, kategorie: str = ""):
     if ctx.memory is None:
         raise ToolError("Gedächtnis nicht verfügbar.")
-    entry = ctx.memory.add(fact)
+    entry = ctx.memory.add(fact, kategorie)
     return f"Gemerkt (Nr. {entry['id']}): {entry['text']}"
+
+
+@tool(
+    "gedaechtnis_durchsuchen",
+    "Search your long-term memory for saved facts matching a keyword. Use this to recall older things "
+    "(people, preferences, notes) that are not shown in the memory list above.",
+    {"suchbegriff": {"type": "string", "description": "Keyword to search for in the saved facts."}},
+    required=["suchbegriff"],
+)
+def gedaechtnis_durchsuchen(ctx, suchbegriff: str):
+    if ctx.memory is None:
+        raise ToolError("Gedächtnis nicht verfügbar.")
+    treffer = ctx.memory.suchen(suchbegriff)
+    if not treffer:
+        return f"Nichts zu '{suchbegriff}' im Gedächtnis gefunden."
+    return "\n".join(_zeile(f) for f in treffer)
 
 
 @tool(

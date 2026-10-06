@@ -49,6 +49,9 @@ DEFAULTS = {
     # Für Videos zusätzlich ffmpeg. Ein anderes Seh-Modell (z. B. "qwen2.5vl") hier eintragen.
     # "aktiv": false schaltet die Seh-Werkzeuge (und den 📎-Knopf) ab.
     "sehen": {"aktiv": True, "modell": "llava"},
+    # Automatisch lernen: Angel merkt sich wichtige Dinge aus EUREN Gesprächen von selbst
+    # (nicht aus fremden Inhalten wie E-Mails/Webseiten – dafür fragt es). false = nur auf Zuruf.
+    "lernen": {"aktiv": True},
     # Oberfläche: "fenster" = eigenes PC-Programm (empfohlen), "terminal" = schwarzes Textfenster
     "oberflaeche": "fenster",
     # Spracheingabe (du sprichst, Angel führt aus)

@@ -11,6 +11,7 @@ from pathlib import Path
 from angel.config import ConfigError, load_config, save_setting
 from angel.tools import ToolContext, ToolError, ToolRegistry, truncate
 from angel.tools import files, system, web
+from angel.tools import memory as memtool
 from angel.tools.memory import Memory
 from tests.helpers import TempDirTest, make_cfg
 
@@ -307,6 +308,39 @@ class MemoryTest(ToolTestBase):
         self.assertTrue(again.remove(1))
         self.assertIsNone(again.remove(99))
         self.assertEqual(len(Memory(self.memory.path).facts), 1)
+
+
+class MemoryLernenTest(ToolTestBase):
+    def test_kategorie_in_anzeige(self):
+        self.memory.add("Tom ist mein Bruder.", "Person")
+        self.memory.add("Ich mag Minecraft.", "Vorliebe")
+        self.memory.add("Einfacher Fakt.")  # ohne Kategorie
+        txt = self.memory.prompt_text()
+        self.assertIn("(Person) Tom ist mein Bruder.", txt)
+        self.assertIn("(Vorliebe) Ich mag Minecraft.", txt)
+        self.assertIn("[3] Einfacher Fakt.", txt)  # ohne Kategorie kein Präfix
+
+    def test_suchen_nach_text_und_kategorie(self):
+        self.memory.add("Tom ist mein Bruder.", "Person")
+        self.memory.add("Anna wohnt in Berlin.", "Person")
+        self.assertEqual(len(self.memory.suchen("tom")), 1)
+        self.assertEqual(self.memory.suchen("gibtsnicht"), [])
+        self.assertEqual(len(self.memory.suchen("person")), 2)  # nach Kategorie
+
+    def test_remember_mit_kategorie(self):
+        out = memtool.remember(self.ctx, "Papa heißt Klaus.", kategorie="Person")
+        self.assertIn("Gemerkt", out)
+        self.assertEqual(self.memory.facts[-1].get("kategorie"), "Person")
+
+    def test_gedaechtnis_durchsuchen_werkzeug(self):
+        self.memory.add("Mein Server liegt unter D:/Server", "Notiz")
+        self.assertIn("D:/Server", memtool.gedaechtnis_durchsuchen(self.ctx, "server"))
+        self.assertIn("nichts", memtool.gedaechtnis_durchsuchen(self.ctx, "xyz").lower())
+
+    def test_lernen_prompt_schaltbar(self):
+        from angel.agent import _lernen_prompt
+        self.assertIn("remember", _lernen_prompt({"lernen": {"aktiv": True}}))
+        self.assertEqual(_lernen_prompt({"lernen": {"aktiv": False}}), "")
 
 
 DDG_HTML = """
