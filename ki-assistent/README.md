@@ -150,6 +150,28 @@ Weitere Schutzmechanismen (in beiden Modi):
 
 ---
 
+## Termine & Erinnerungen
+
+Sag Angel einfach, **wann** etwas passieren soll – einmalig oder wiederkehrend:
+
+- „**Erinnere mich um 15 Uhr**, Tom anzurufen." → Erinnerung heute um 15:00
+- „**Schick Tom um 15 Uhr** eine Nachricht, dass ich später komme." → Angel macht es selbst um 15:00
+- „**Jeden Montag morgen um 8** mach mir eine To-do-Liste." → wiederkehrend
+- „**Werktags um 7** weck mich mit den News." / „**Jeden Tag um 22 Uhr** …"
+
+Es gibt zwei Arten:
+- **Erinnerung:** Angel meldet sich bei dir (⏰, mit kurzem Ton), damit **du** es machst.
+- **Auftrag:** Angel **erledigt es selbst** zur richtigen Zeit – im Fenster vollautomatisch. Normale
+  Dinge (z. B. eine Discord-Nachricht schicken) laufen ohne Nachfrage; **kritische** Dinge (Bannen,
+  PC-Einstellungen …) macht Angel **nicht** unbeaufsichtigt, sondern lässt sie aus.
+
+„Zeig meine Termine" listet alles auf, „Sag den Montags-Termin ab" entfernt ihn. Die Liste steht in
+`daten/aufgaben.json`. **Wichtig:** Geplante Dinge laufen nur, solange Angel läuft – darum ist der
+Autostart praktisch (dann ist Angel im Hintergrund immer bereit). Ist der PC aus, wird eine verpasste
+Aufgabe beim nächsten Start nachgeholt.
+
+---
+
 ## Discord
 
 Angel steuert einen **eigenen Bot** – niemals deinen persönlichen Account (das wäre bei Discord

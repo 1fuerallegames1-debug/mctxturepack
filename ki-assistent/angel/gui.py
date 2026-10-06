@@ -87,6 +87,37 @@ class ChatController:
     def running(self) -> bool:
         return self.busy.locked()
 
+    def run_hintergrund(self, text: str) -> bool:
+        """Führt eine geplante Aufgabe aus: Normales ohne Nachfrage, Kritisches wird ausgelassen.
+
+        Gibt False zurück, wenn Angel gerade beschäftigt ist – dann später erneut versuchen.
+        """
+        if not self.busy.acquire(blocking=False):
+            return False
+
+        def approve(req: dict) -> str:
+            # Geplante Aufgaben laufen ohne Rückfrage; kritische (gefährliche) werden NICHT
+            # unbeaufsichtigt ausgeführt, sondern ausgelassen.
+            return "no" if req.get("dangerous") else "yes"
+
+        def worker():
+            self.events.put({"type": "busy_an"})
+            self.events.put({"type": "user", "text": text})
+            prev = self.agent.auto_mode
+            self.agent.auto_mode = True
+            try:
+                for ev in self.agent.run(text, approve):
+                    self.events.put(ev)
+            except Exception as e:
+                self.events.put({"type": "error", "message": f"Interner Fehler: {type(e).__name__}: {e}"})
+            finally:
+                self.agent.auto_mode = prev
+                self.events.put({"type": "end"})
+                self.busy.release()
+
+        threading.Thread(target=worker, daemon=True, name="geplant").start()
+        return True
+
 
 # --------------------------------------------------------------------------- Das Fenster
 
@@ -154,6 +185,7 @@ def run_gui(agent) -> int:
     chat.tag_configure("ok", foreground=OKC, font=mono)
     chat.tag_configure("err", foreground=ERRC, font=mono)
     chat.tag_configure("info", foreground=MUTED, spacing1=4)
+    chat.tag_configure("reminder", foreground=WARN, font=bold, spacing1=8, spacing3=2)
 
     # Transkript-Zeile (zeigt, was per Sprache verstanden wurde)
     heard = tk.Label(root, text="", bg=BG, fg=WARN, anchor="w")
@@ -260,6 +292,16 @@ def run_gui(agent) -> int:
             box = state["approvals"].pop(ev["approval_id"], None)
             if box and not box.winfo_viewable():
                 pass
+        elif t == "reminder":
+            write("⏰ Erinnerung: " + ev["text"], "reminder")
+            try:
+                root.bell()
+                root.deiconify()
+                root.lift()
+            except Exception:
+                pass
+        elif t == "busy_an":
+            set_busy(True)
         elif t == "info":
             write(ev["message"], "info")
         elif t == "error":
@@ -283,10 +325,12 @@ def run_gui(agent) -> int:
         text = entry.get("1.0", "end").strip()
         if not text:
             return "break"
-        entry.delete("1.0", "end")
-        heard.configure(text="")
         if controller.send(text):
+            entry.delete("1.0", "end")
+            heard.configure(text="")
             set_busy(True)
+        else:
+            write("Angel arbeitet gerade – einen Moment, dann nochmal senden.", "info")
         return "break"
 
     def new_chat():
@@ -368,8 +412,22 @@ def run_gui(agent) -> int:
 
     show_welcome()
     entry.focus_set()
+
+    # Terminplaner: prüft im Hintergrund, was fällig ist. Erinnerungen werden angezeigt,
+    # Aufträge führt Angel selbst aus (Normales ohne Nachfrage, Kritisches wird ausgelassen).
+    from .planer import Scheduler, hole_aufgaben
+    aufgaben = hole_aufgaben(agent.ctx.data_dir / "aufgaben.json")
+    scheduler = Scheduler(
+        aufgaben,
+        on_erinnerung=lambda task: controller.events.put({"type": "reminder", "text": task.get("text", "")}),
+        on_auftrag=lambda task: controller.run_hintergrund("Geplante Aufgabe – bitte jetzt ausführen: "
+                                                           + task.get("text", "")),
+        intervall=30)
+    scheduler.start()
+
     root.after(60, pump)
-    root.protocol("WM_DELETE_WINDOW", lambda: (controller.stop(), root.destroy()))
+    root.protocol("WM_DELETE_WINDOW", lambda: (scheduler.stop(), controller.stop(), root.destroy()))
     root.mainloop()
+    scheduler.stop()
     controller.stop()
     return 0

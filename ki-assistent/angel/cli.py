@@ -195,6 +195,7 @@ class TerminalChat:
     def loop(self):
         if not self.startup_check():
             return 1
+        self._starte_planer()
         while True:
             try:
                 self.out("")
@@ -210,6 +211,29 @@ class TerminalChat:
                     return 0
                 continue
             self.handle(text)
+
+    def _starte_planer(self):
+        """Terminplaner im Hintergrund: zeigt fällige Erinnerungen und Aufträge an.
+
+        (Im Textmodus werden geplante Aufträge als Erinnerung angezeigt; im Fenster
+        führt Angel sie automatisch aus.)
+        """
+        try:
+            from .planer import Scheduler, hole_aufgaben
+        except Exception:
+            return
+        s = self.s
+        store = hole_aufgaben(self.agent.ctx.data_dir / "aufgaben.json")
+
+        def erinnerung(task):
+            self.out(f"\n{s.yellow}⏰ Erinnerung: {task.get('text', '')}{s.reset}")
+
+        def auftrag(task):
+            self.out(f"\n{s.yellow}⏰ Geplante Aufgabe fällig: {task.get('text', '')}{s.reset}"
+                     f"  {s.dim}(im Fenster führt Angel sie automatisch aus){s.reset}")
+            return True
+
+        Scheduler(store, erinnerung, auftrag, intervall=30).start()
 
     def command(self, text: str):
         s, agent = self.s, self.agent

@@ -106,6 +106,18 @@ def _browser_prompt(cfg) -> str:
             "post or send anything unless your owner clearly asked for it, and ask first when unsure.")
 
 
+def _planer_prompt(cfg) -> str:
+    return ("## Reminders & scheduled tasks\n"
+            "You have a built-in scheduler: aufgabe_planen (add), aufgaben_anzeigen (list), aufgabe_absagen "
+            "(cancel). Whenever your owner wants something at a time or on a schedule ('at 15:00 send Tom a "
+            "message', 'remind me tomorrow', 'every Monday morning make my list'), use aufgabe_planen and "
+            "translate their words into the fields yourself: time as HH:MM (24h); a one-time day as "
+            "datum=YYYY-MM-DD (omit for today); repeating via wiederholung = taeglich / werktags / wochenende / "
+            "woechentlich (+ wochentag 0=Mon..6=Sun) / monatlich. Use typ='auftrag' when YOU should carry it out "
+            "at that time (e.g. send a message, make a list), typ='erinnerung' when you should just remind your "
+            "owner. Scheduled tasks only fire while Angel is running (Angel is in autostart).")
+
+
 def gender_rule(setting) -> str:
     value = (setting or "weiblich").strip().lower()
     if value in ("weiblich", "female", "sie", "w"):
@@ -230,7 +242,7 @@ class Agent:
                       "'cmd', 'explorer') or a full path to an .exe. For files and folders, prefer find_files and open_item.",
                       "- Windows 11 specifics: right-click gives a compact menu ('Show more options' for the full one); "
                       "the Start menu and search are opened with the Windows key; drives are C:, D: etc."]
-        for block in (_discord_prompt(cfg), _google_prompt(cfg), _browser_prompt(cfg)):
+        for block in (_planer_prompt(cfg), _discord_prompt(cfg), _google_prompt(cfg), _browser_prompt(cfg)):
             if block:
                 lines += ["", block]
         weekday = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")[today.weekday()]
