@@ -172,6 +172,21 @@ Aufgabe beim nächsten Start nachgeholt.
 
 ---
 
+## Bilder & Videos verstehen
+
+Klick im Fenster auf **📎**, wähle ein **Bild oder Video** – Angel sagt dir, was darauf/darin zu sehen
+ist. Oder sag es einfach: „Schau dir `C:\Users\…\foto.jpg` an, wer ist darauf?"
+
+- **Bilder** (`.png`, `.jpg`, `.webp`, …): Angel beschreibt den Inhalt oder beantwortet deine Frage dazu.
+- **Videos** (`.mp4`, `.mov`, …): Angel schaut sich mehrere Standbilder an und sagt, was passiert
+  (dafür wird **ffmpeg** gebraucht: `winget install -e --id Gyan.FFmpeg`).
+
+Dafür nutzt Angel ein lokales **Seh-Modell** (Standard `llava`) – der Installer lädt es gleich mit. Ein
+anderes Modell trägst du in `config.json` unter `sehen` → `modell` ein (z. B. `qwen2.5vl`). Fehlt das
+Modell, sagt Angel dir, wie du es mit einem Befehl nachinstallierst (`ollama pull llava`).
+
+---
+
 ## Discord
 
 Angel steuert einen **eigenen Bot** – niemals deinen persönlichen Account (das wäre bei Discord

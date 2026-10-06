@@ -45,6 +45,9 @@ DEFAULTS = {
     # Standard-Ordner für Befehle ("" = dein Benutzerordner)
     "arbeitsordner": "",
     "websuche": {"anbieter": "duckduckgo", "searxng_url": ""},
+    # Bilder/Videos verstehen: lokales Seh-Modell über Ollama (einmalig: ollama pull llava).
+    # Für Videos zusätzlich ffmpeg. Ein anderes Seh-Modell (z. B. "qwen2.5vl") hier eintragen.
+    "sehen": {"modell": "llava"},
     # Oberfläche: "fenster" = eigenes PC-Programm (empfohlen), "terminal" = schwarzes Textfenster
     "oberflaeche": "fenster",
     # Spracheingabe (du sprichst, Angel führt aus)

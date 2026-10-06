@@ -205,6 +205,8 @@ def run_gui(agent) -> int:
     entry.pack(side="left", fill="both", expand=True, padx=(10, 6), pady=10)
     mic_btn = tk.Button(foot, text="🎤", width=3, relief="flat", bg=PANEL, fg=TEXT, activebackground=USER)
     mic_btn.pack(side="left", padx=2, pady=10)
+    pic_btn = tk.Button(foot, text="📎", width=3, relief="flat", bg=PANEL, fg=TEXT, activebackground=USER)
+    pic_btn.pack(side="left", padx=2, pady=10)
     send_btn = tk.Button(foot, text="Senden", bg=ACCENT, fg="#0d1117", relief="flat", width=9,
                          activebackground="#a39dff")
     send_btn.pack(side="right", padx=(6, 10), pady=10)
@@ -402,6 +404,32 @@ def run_gui(agent) -> int:
         threading.Thread(target=prepare, daemon=True).start()
 
     mic_btn.configure(command=toggle_mic)
+
+    def pick_bild():
+        from tkinter import filedialog
+        pfad = filedialog.askopenfilename(
+            title="Bild oder Video auswählen",
+            filetypes=[("Bilder & Videos", "*.png *.jpg *.jpeg *.webp *.gif *.bmp "
+                                           "*.mp4 *.mov *.mkv *.avi *.webm *.m4v"),
+                       ("Alle Dateien", "*.*")])
+        if not pfad:
+            return
+        endung = pfad.rsplit(".", 1)[-1].lower() if "." in pfad else ""
+        ist_video = endung in ("mp4", "mov", "mkv", "avi", "webm", "m4v")
+        frage = entry.get("1.0", "end").strip()
+        was = "Video" if ist_video else "Bild"
+        verb = "was darin passiert" if ist_video else "was darauf zu sehen ist"
+        text = f"Schau dir dieses {was} an und sag mir, {verb}: {pfad}"
+        if frage:
+            text += f"  (Frage dazu: {frage})"
+        if controller.send(text):
+            entry.delete("1.0", "end")
+            heard.configure(text="")
+            set_busy(True)
+        else:
+            write("Angel arbeitet gerade – einen Moment, dann nochmal.", "info")
+
+    pic_btn.configure(command=pick_bild)
 
     def show_welcome():
         write(f"Hallo! Ich bin {name}. Ich laufe auf deinem PC und erledige Dinge für dich – "

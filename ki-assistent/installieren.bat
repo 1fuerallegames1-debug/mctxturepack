@@ -59,6 +59,8 @@ if errorlevel 1 (
   timeout /t 8 /nobreak >nul 2>nul
   "%ANGEL_OLLAMA%" pull qwen3:8b
 )
+echo     ... und das Seh-Modell fuer Bilder/Videos (llava) ...
+"%ANGEL_OLLAMA%" pull llava
 
 rem ---------- Sprache + Browser (Fehler hier sind nicht schlimm) ----------
 echo [4/5] Sprache und Browser werden eingerichtet ...

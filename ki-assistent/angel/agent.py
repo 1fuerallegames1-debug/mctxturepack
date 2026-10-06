@@ -118,6 +118,14 @@ def _planer_prompt(cfg) -> str:
             "owner. Scheduled tasks only fire while Angel is running (Angel is in autostart).")
 
 
+def _sehen_prompt(cfg) -> str:
+    return ("## Seeing images & videos\n"
+            "You can look at pictures and videos on this computer: bild_ansehen(pfad) describes an image or "
+            "answers a question about it, video_ansehen(pfad) does the same for a video. Use them whenever the "
+            "owner sends, shares or points to an image, screenshot, photo or video and wants to know what it "
+            "shows. Pass the file path; add 'frage' only if they ask something specific.")
+
+
 def gender_rule(setting) -> str:
     value = (setting or "weiblich").strip().lower()
     if value in ("weiblich", "female", "sie", "w"):
@@ -242,7 +250,8 @@ class Agent:
                       "'cmd', 'explorer') or a full path to an .exe. For files and folders, prefer find_files and open_item.",
                       "- Windows 11 specifics: right-click gives a compact menu ('Show more options' for the full one); "
                       "the Start menu and search are opened with the Windows key; drives are C:, D: etc."]
-        for block in (_planer_prompt(cfg), _discord_prompt(cfg), _google_prompt(cfg), _browser_prompt(cfg)):
+        for block in (_planer_prompt(cfg), _sehen_prompt(cfg), _discord_prompt(cfg), _google_prompt(cfg),
+                      _browser_prompt(cfg)):
             if block:
                 lines += ["", block]
         weekday = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")[today.weekday()]
