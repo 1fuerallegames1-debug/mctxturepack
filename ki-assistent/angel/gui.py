@@ -132,6 +132,7 @@ def run_gui(agent) -> int:
     from tkinter import font as tkfont
 
     from . import voice
+    from .config import sehen_aktiv
     from .regeln import REGELN
 
     # Das Passwortschloss läuft zentral in __main__.main(), BEVOR der Agent gebaut wird.
@@ -205,8 +206,10 @@ def run_gui(agent) -> int:
     entry.pack(side="left", fill="both", expand=True, padx=(10, 6), pady=10)
     mic_btn = tk.Button(foot, text="🎤", width=3, relief="flat", bg=PANEL, fg=TEXT, activebackground=USER)
     mic_btn.pack(side="left", padx=2, pady=10)
-    pic_btn = tk.Button(foot, text="📎", width=3, relief="flat", bg=PANEL, fg=TEXT, activebackground=USER)
-    pic_btn.pack(side="left", padx=2, pady=10)
+    pic_btn = None
+    if sehen_aktiv(cfg):
+        pic_btn = tk.Button(foot, text="📎", width=3, relief="flat", bg=PANEL, fg=TEXT, activebackground=USER)
+        pic_btn.pack(side="left", padx=2, pady=10)
     send_btn = tk.Button(foot, text="Senden", bg=ACCENT, fg="#0d1117", relief="flat", width=9,
                          activebackground="#a39dff")
     send_btn.pack(side="right", padx=(6, 10), pady=10)
@@ -419,9 +422,10 @@ def run_gui(agent) -> int:
         frage = entry.get("1.0", "end").strip()
         was = "Video" if ist_video else "Bild"
         verb = "was darin passiert" if ist_video else "was darauf zu sehen ist"
-        text = f"Schau dir dieses {was} an und sag mir, {verb}: {pfad}"
-        if frage:
-            text += f"  (Frage dazu: {frage})"
+        # Pfad IMMER zuletzt und in Anführungszeichen – so schneidet auch ein kleines Modell
+        # einen Pfad mit Leerzeichen (z. B. "Eigene Bilder") nicht am Leerzeichen ab.
+        zusatz = f" Frage dazu: {frage}" if frage else ""
+        text = f'Schau dir dieses {was} an und sag mir, {verb}.{zusatz} Datei: "{pfad}"'
         if controller.send(text):
             entry.delete("1.0", "end")
             heard.configure(text="")
@@ -429,7 +433,8 @@ def run_gui(agent) -> int:
         else:
             write("Angel arbeitet gerade – einen Moment, dann nochmal.", "info")
 
-    pic_btn.configure(command=pick_bild)
+    if pic_btn is not None:
+        pic_btn.configure(command=pick_bild)
 
     def show_welcome():
         write(f"Hallo! Ich bin {name}. Ich laufe auf deinem PC und erledige Dinge für dich – "

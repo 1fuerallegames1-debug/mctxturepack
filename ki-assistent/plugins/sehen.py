@@ -22,7 +22,8 @@ from angel.tools import ToolError, tool
 
 _BILD_ENDUNGEN = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}
 _VIDEO_ENDUNGEN = {".mp4", ".mov", ".mkv", ".avi", ".webm", ".m4v"}
-_MAX_BYTES = 20 * 1024 * 1024
+_MAX_BYTES = 20 * 1024 * 1024               # Bilder: höchstens 20 MB
+_MAX_VIDEO_BYTES = 2 * 1024 * 1024 * 1024   # Videos: höchstens 2 GB (ffmpeg liest nur Einzelbilder)
 
 
 def _ollama_base(cfg) -> str:
@@ -66,10 +67,16 @@ def _frag_seh_modell(cfg, prompt: str, bilder_b64: list) -> str:
 
 
 def _lade_b64(pfad: Path) -> str:
-    daten = pfad.read_bytes()
-    if len(daten) > _MAX_BYTES:
+    try:
+        groesse = pfad.stat().st_size
+    except OSError as e:
+        raise ToolError(f"Datei nicht lesbar: {e}") from None
+    if groesse > _MAX_BYTES:  # Größe PRÜFEN, bevor die Datei in den Speicher geladen wird
         raise ToolError("Die Datei ist größer als 20 MB – bitte ein kleineres Bild verwenden.")
-    return base64.b64encode(daten).decode("ascii")
+    try:
+        return base64.b64encode(pfad.read_bytes()).decode("ascii")
+    except OSError as e:
+        raise ToolError(f"Datei nicht lesbar: {e}") from None
 
 
 def _video_dauer(pfad: Path):
@@ -158,6 +165,11 @@ def video_ansehen(ctx, pfad, frage="", bilder=4):
     if not shutil.which("ffmpeg"):
         raise ToolError("Für Videos brauche ich ffmpeg. Einmalig installieren: winget install -e --id Gyan.FFmpeg "
                         "(danach das Fenster neu starten).")
+    try:
+        if p.stat().st_size > _MAX_VIDEO_BYTES:
+            raise ToolError("Das Video ist größer als 2 GB – bitte einen kürzeren Ausschnitt verwenden.")
+    except OSError as e:
+        raise ToolError(f"Datei nicht lesbar: {e}") from None
     try:
         n = max(1, min(int(bilder or 4), 8))
     except (TypeError, ValueError):

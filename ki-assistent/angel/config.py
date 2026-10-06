@@ -47,7 +47,8 @@ DEFAULTS = {
     "websuche": {"anbieter": "duckduckgo", "searxng_url": ""},
     # Bilder/Videos verstehen: lokales Seh-Modell über Ollama (einmalig: ollama pull llava).
     # Für Videos zusätzlich ffmpeg. Ein anderes Seh-Modell (z. B. "qwen2.5vl") hier eintragen.
-    "sehen": {"modell": "llava"},
+    # "aktiv": false schaltet die Seh-Werkzeuge (und den 📎-Knopf) ab.
+    "sehen": {"aktiv": True, "modell": "llava"},
     # Oberfläche: "fenster" = eigenes PC-Programm (empfohlen), "terminal" = schwarzes Textfenster
     "oberflaeche": "fenster",
     # Spracheingabe (du sprichst, Angel führt aus)
@@ -149,6 +150,14 @@ def data_dir() -> Path:
     d = Path(os.environ.get("ANGEL_DATEN") or (PROJECT_DIR / "daten"))
     d.mkdir(parents=True, exist_ok=True)
     return d
+
+
+def sehen_aktiv(cfg: dict) -> bool:
+    """Seh-Funktion verfügbar? Nur wenn eingeschaltet UND das Modell über Ollama läuft
+    (das Seh-Plugin spricht das Ollama-Format; andere Anbieter werden hier nicht unterstützt)."""
+    if not (cfg.get("sehen") or {}).get("aktiv", True):
+        return False
+    return (cfg.get("anbieter") or "ollama").strip().lower() == "ollama"
 
 
 def working_dir(cfg: dict) -> Path:

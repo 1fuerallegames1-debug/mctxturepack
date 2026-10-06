@@ -17,7 +17,7 @@ import re
 from pathlib import Path
 from typing import Callable, Iterator
 
-from .config import PROJECT_DIR, working_dir
+from .config import PROJECT_DIR, sehen_aktiv, working_dir
 from .llm import Cancelled, LLMError, make_client
 from .regeln import PROJECT_DIR
 from .regeln import PROMPT as RULES_PROMPT
@@ -36,7 +36,8 @@ DANGER_WARNINGS = {
 }
 FAILED_EXIT = re.compile(r"^Exit-Code: (?!0$)", re.M)
 # Diese Schutzabfragen gelten auch im Automatik-Modus (gegen manipulierte Webseiten/Dateien)
-GUARDED_IN_AUTO = {"fetch_webpage", "open_item", "remember", "forget", "aufgabe_planen", "aufgabe_absagen"}
+GUARDED_IN_AUTO = {"fetch_webpage", "open_item", "remember", "forget", "aufgabe_planen", "aufgabe_absagen",
+                   "video_ansehen"}
 EXPIRED_MESSAGE = ("Your owner did not answer the approval request in time (they may be away). "
                    "Do not retry now - ask again when they are back.")
 RULE3_DISPLAY = "Abgelehnt (Regel 3): Angel darf ihren Programmkern und ihre Grundregeln nicht verändern."
@@ -119,6 +120,8 @@ def _planer_prompt(cfg) -> str:
 
 
 def _sehen_prompt(cfg) -> str:
+    if not sehen_aktiv(cfg):
+        return ""
     return ("## Seeing images & videos\n"
             "You can look at pictures and videos on this computer: bild_ansehen(pfad) describes an image or "
             "answers a question about it, video_ansehen(pfad) does the same for a video. Use them whenever the "
@@ -149,6 +152,9 @@ class Agent:
             if not (cfg.get(key) or {}).get("aktiv"):
                 for n in [n for n in list(self.registry.tools) if n.startswith(prefixes)]:
                     self.registry.tools.pop(n, None)
+        if not sehen_aktiv(cfg):  # Seh-Werkzeuge nur bei aktiver Seh-Funktion über Ollama
+            for n in ("bild_ansehen", "video_ansehen"):
+                self.registry.tools.pop(n, None)
         self.memory = memory or Memory(data / "gedaechtnis.json")
         if getattr(self.memory, "warning", ""):
             self.plugin_errors.append(self.memory.warning)  # wird beim Start angezeigt

@@ -18,6 +18,7 @@ def _load_plugin():
     spec = importlib.util.spec_from_file_location("angel_plugin_sehen", PROJECT / "plugins" / "sehen.py")
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
+    return mod
 
 
 class _Handler(BaseHTTPRequestHandler):
@@ -50,7 +51,7 @@ class MockVision:
 class SehenTest(TempDirTest):
     def setUp(self):
         super().setUp()
-        _load_plugin()
+        self.mod = _load_plugin()
         self.mock = MockVision()
         self.addCleanup(self.mock.close)
         self.reg = ToolRegistry()
@@ -99,6 +100,32 @@ class SehenTest(TempDirTest):
             with self.assertRaises(ToolError) as e:
                 self.run_tool("video_ansehen", pfad="clip.mp4")
         self.assertIn("ffmpeg", str(e.exception).lower())
+
+    def test_zu_grosses_bild_wird_vor_dem_einlesen_abgelehnt(self):
+        (self.work / "gross.png").write_bytes(b"x" * 500)
+        self.mod._MAX_BYTES = 100  # Grenze künstlich klein setzen
+        try:
+            with self.assertRaises(ToolError) as e:
+                self.run_tool("bild_ansehen", pfad="gross.png")
+        finally:
+            self.mod._MAX_BYTES = 20 * 1024 * 1024
+        self.assertIn("MB", str(e.exception))
+        self.assertIsNone(self.mock.server.letzte)  # nichts gesendet -> vor dem Lesen abgelehnt
+
+    def test_pfad_mit_anfuehrungszeichen_und_leerzeichen(self):
+        (self.work / "mein bild.png").write_bytes(BILD_BYTES)
+        # So übergibt der 📎-Knopf den Pfad (in Anführungszeichen) – ctx.resolve entfernt sie wieder
+        _, out = self.run_tool("bild_ansehen", pfad='"mein bild.png"')
+        self.assertIn("Testbild", out)
+
+
+class SehenAktivTest(unittest.TestCase):
+    def test_gatterung(self):
+        from angel.config import sehen_aktiv
+        self.assertTrue(sehen_aktiv({"sehen": {"aktiv": True}, "anbieter": "ollama"}))
+        self.assertTrue(sehen_aktiv({}))  # Standard: aktiv + ollama
+        self.assertFalse(sehen_aktiv({"sehen": {"aktiv": False}, "anbieter": "ollama"}))
+        self.assertFalse(sehen_aktiv({"sehen": {"aktiv": True}, "anbieter": "openai"}))
 
 
 if __name__ == "__main__":
