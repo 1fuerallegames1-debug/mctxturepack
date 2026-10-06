@@ -21,19 +21,33 @@ def main(argv=None) -> int:
                         help="einmalig bei Google anmelden (öffnet den Browser)")
     parser.add_argument("--autostart", choices=["ein", "aus", "status"],
                         help="Angel beim Anmelden automatisch starten (ein/aus/status)")
+    parser.add_argument("--passwort-pruefen", dest="passwort_pruefen", action="store_true",
+                        help="(für den Installer) fragt das Angel-Passwort ab und beendet sich")
+    parser.add_argument("--einstellung", dest="einstellung", nargs=2, metavar=("SCHLUESSEL", "WERT"),
+                        help="(für den Installer) speichert einen Wert in config.json")
     parser.add_argument("--version", action="version", version=f"Angel {__version__}")
     args = parser.parse_args(argv)
+
+    # Passwort nur bei der Installation: dieser Aufruf prüft es und läuft ohne Konfiguration/Agent.
+    if args.passwort_pruefen:
+        return _passwort_pruefen()
 
     try:
         cfg = load_config()
     except ConfigError as e:
         print(f"Fehler in den Einstellungen: {e}")
         return 1
+
+    if args.einstellung:  # vom Installer: Browser / Medien-Ordner usw. in config.json ablegen
+        from .config import save_setting
+        schluessel, wert = args.einstellung
+        save_setting(schluessel, wert)
+        print(f"Gespeichert: {schluessel} = {wert}")
+        return 0
+
     if args.modell:
         cfg["modell"] = args.modell
 
-    # --autostart richtet nur die Startverknüpfung ein (kein Kontozugriff, keine Nutzung von
-    # Angel) und bleibt daher ohne Passwort, damit der Ein-Klick-Installer nicht blockiert.
     if args.autostart:
         from . import autostart
         try:
@@ -45,13 +59,6 @@ def main(argv=None) -> int:
         except Exception as e:
             print(f"Autostart konnte nicht geändert werden: {e}")
             return 1
-
-    # Passwortschloss: ab hier wird Angel wirklich benutzt oder greift auf Konten zu. Es läuft
-    # VOR der Google-Anmeldung und VOR dem Aufbau des Agents – vorher tut Angel nichts.
-    gate_fenster = (not args.terminal and not args.google_login
-                    and (cfg.get("oberflaeche") or "fenster").lower() == "fenster")
-    if not _passwort_gate(gate_fenster):
-        return 0
 
     if args.google_login:
         return _google_login(cfg)
@@ -84,66 +91,26 @@ def main(argv=None) -> int:
     return run_cli(agent)
 
 
-def _passwort_gate(fenster: bool) -> bool:
-    """Fragt das Startpasswort ab. Gibt nur True zurück, wenn es stimmt."""
-    from . import sicherheit
-    from .config import data_dir
-    dd = data_dir()
-    if fenster:
-        try:
-            return _gate_fenster(dd, sicherheit)
-        except Exception:
-            pass  # kein Tkinter/keine Anzeige -> auf die Konsole ausweichen
-    return _gate_konsole(dd, sicherheit)
+def _passwort_pruefen() -> int:
+    """Für den Installer: ohne das richtige Passwort lässt sich Angel nicht einrichten.
 
-
-def _gate_konsole(dd, sicherheit) -> bool:
+    Nach der Installation wird NICHT mehr nach dem Passwort gefragt (kein Start-Schloss).
+    """
     import getpass
 
-    def frage(rest):
+    from . import sicherheit
+    for rest in range(5, 0, -1):
         try:
-            return getpass.getpass(f"Passwort (noch {rest} Versuch(e), danach loescht sich Angel): ")
-        except Exception:
-            return None  # keine Eingabe moeglich (kein Terminal) -> sicherheitshalber nicht starten
-
-    def melde(code):
-        if code == sicherheit.GESPERRT:
-            print("Angel ist gesperrt und hat seine Daten geloescht. Bitte Angel neu installieren.")
-        elif code == sicherheit.ZERSTOERT:
-            print("Fuenf falsche Passwoerter. Angel hat seine eigenen Daten geloescht und sich gesperrt.")
-
-    return sicherheit.pruefe_start(dd, frage, melde) == sicherheit.FREIGEGEBEN
-
-
-def _gate_fenster(dd, sicherheit) -> bool:
-    import tkinter as tk
-    from tkinter import messagebox, simpledialog
-
-    root = tk.Tk()
-    root.withdraw()
-    try:
-        def frage(rest):
-            return simpledialog.askstring(
-                "Angel – Passwort",
-                "Bitte Passwort eingeben.\n"
-                f"Noch {rest} Versuch(e) – danach löscht Angel seine eigenen Daten und sperrt sich.",
-                show="*", parent=root)
-
-        def melde(code):
-            if code == sicherheit.GESPERRT:
-                messagebox.showerror(
-                    "Angel ist gesperrt",
-                    "Angel wurde nach zu vielen falschen Passwörtern gesperrt und hat seine eigenen "
-                    "Daten gelöscht. Bitte Angel neu installieren.", parent=root)
-            elif code == sicherheit.ZERSTOERT:
-                messagebox.showerror(
-                    "Angel hat sich gesperrt",
-                    "Fünf falsche Passwörter. Angel hat seine eigenen Daten (Gedächtnis, Konto-Zugänge, "
-                    "Browser-Logins) gelöscht und sich dauerhaft gesperrt.", parent=root)
-
-        return sicherheit.pruefe_start(dd, frage, melde) == sicherheit.FREIGEGEBEN
-    finally:
-        root.destroy()
+            pw = getpass.getpass(f"Angel-Passwort (noch {rest} Versuch(e)): ")
+        except (EOFError, KeyboardInterrupt):
+            print("Abgebrochen.")
+            return 1
+        if sicherheit.passwort_korrekt(pw):
+            print("Passwort korrekt.")
+            return 0
+        print("Falsch.")
+    print("Zu viele Fehlversuche – Installation abgebrochen.")
+    return 1
 
 
 def _google_login(cfg) -> int:

@@ -37,7 +37,7 @@ DANGER_WARNINGS = {
 FAILED_EXIT = re.compile(r"^Exit-Code: (?!0$)", re.M)
 # Diese Schutzabfragen gelten auch im Automatik-Modus (gegen manipulierte Webseiten/Dateien)
 GUARDED_IN_AUTO = {"fetch_webpage", "open_item", "remember", "forget", "aufgabe_planen", "aufgabe_absagen",
-                   "video_ansehen"}
+                   "video_ansehen", "bild_zeigen", "im_browser_oeffnen", "medien_herunterladen"}
 EXPIRED_MESSAGE = ("Your owner did not answer the approval request in time (they may be away). "
                    "Do not retry now - ask again when they are back.")
 RULE3_DISPLAY = "Abgelehnt (Regel 3): Angel darf ihren Programmkern und ihre Grundregeln nicht verändern."
@@ -117,6 +117,29 @@ def _planer_prompt(cfg) -> str:
             "woechentlich (+ wochentag 0=Mon..6=Sun) / monatlich. Use typ='auftrag' when YOU should carry it out "
             "at that time (e.g. send a message, make a list), typ='erinnerung' when you should just remind your "
             "owner. Scheduled tasks only fire while Angel is running (Angel is in autostart).")
+
+
+def _medien_prompt(cfg) -> str:
+    return ("## Showing & saving images and videos\n"
+            "To SHOW the owner a picture of something ('zeig/such mir ein Bild von X'): call "
+            "bild_zeigen(begriff) - it finds a REAL image and opens it in the owner's browser. For several "
+            "options use bild_suchen (returns real image URLs). NEVER write Markdown image links like "
+            "![...](...) and NEVER invent URLs - they do not work and made-up links are wrong; always use the "
+            "tools. To open a page or do a web/video search in the browser, use im_browser_oeffnen. To SAVE a "
+            "picture or video ('speicher das Bild/Video'): use medien_herunterladen with the direct image/video "
+            "URL; if the owner names no folder it goes to their media folder from the settings.")
+
+
+def _programmieren_prompt(cfg) -> str:
+    sprachen = cfg.get("programmiersprachen") or ["Python", "Java"]
+    liste = ", ".join(str(s) for s in sprachen)
+    return ("## Programming\n"
+            f"You can write, run and debug code for the owner. Actively supported languages: {liste} (the owner "
+            "may add more). Python: write a .py file (write_file) and run it with run_python or `python file.py` "
+            "(run_command). Java: write the .java file, compile with `javac Datei.java` and run with "
+            "`java Datei` (run_command); if javac/java are missing, offer to install a JDK, e.g. "
+            "`winget install -e --id Microsoft.OpenJDK.21`. Put code projects in a sensible folder, keep the "
+            "code clean and explain briefly what you did.")
 
 
 def _pflege_prompt(cfg) -> str:
@@ -282,8 +305,9 @@ class Agent:
                       "'cmd', 'explorer') or a full path to an .exe. For files and folders, prefer find_files and open_item.",
                       "- Windows 11 specifics: right-click gives a compact menu ('Show more options' for the full one); "
                       "the Start menu and search are opened with the Windows key; drives are C:, D: etc."]
-        for block in (_planer_prompt(cfg), _lernen_prompt(cfg), _pflege_prompt(cfg), _sehen_prompt(cfg),
-                      _discord_prompt(cfg), _google_prompt(cfg), _browser_prompt(cfg)):
+        for block in (_planer_prompt(cfg), _lernen_prompt(cfg), _medien_prompt(cfg), _programmieren_prompt(cfg),
+                      _pflege_prompt(cfg), _sehen_prompt(cfg), _discord_prompt(cfg), _google_prompt(cfg),
+                      _browser_prompt(cfg)):
             if block:
                 lines += ["", block]
         weekday = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")[today.weekday()]

@@ -57,6 +57,14 @@ DEFAULTS = {
     # Automatisch lernen: Angel merkt sich wichtige Dinge aus EUREN Gesprächen von selbst
     # (nicht aus fremden Inhalten wie E-Mails/Webseiten – dafür fragt es). false = nur auf Zuruf.
     "lernen": {"aktiv": True},
+    # Welcher Browser soll Bilder/Videos/Seiten öffnen? "opera gx" wird automatisch gefunden;
+    # "" = Standardbrowser des Systems. Es geht auch ein voller Pfad zu einer .exe.
+    "web_browser": "opera gx",
+    # Wohin Angel Bilder/Videos speichert, wenn du "speichern" sagst (leer = Ordner "Angel-Medien"
+    # unter deinen Bildern). Rückschrägstriche im Pfad bitte doppelt schreiben.
+    "medien_ordner": "D:\\FAG Angel\\Gespeicherter Stuff\\Medien",
+    # Programmiersprachen, die Angel aktiv unterstützt (du kannst jederzeit weitere ergänzen).
+    "programmiersprachen": ["Python", "Java"],
     # Oberfläche: "fenster" = eigenes PC-Programm (empfohlen), "terminal" = schwarzes Textfenster
     "oberflaeche": "fenster",
     # Spracheingabe (du sprichst, Angel führt aus)

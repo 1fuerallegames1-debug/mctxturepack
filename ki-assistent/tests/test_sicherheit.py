@@ -136,64 +136,25 @@ class SchutzTest(TempDirTest):
         self.assertTrue(regeln.touches_core(ziel))
 
 
-class StartGateTest(TempDirTest):
-    """Das Schloss sitzt zentral in __main__.main() – vor Google-Anmeldung und Agent-Aufbau."""
+class PasswortInstallTest(unittest.TestCase):
+    """Das Passwort wird nur noch bei der Installation abgefragt (--passwort-pruefen)."""
 
-    def setUp(self):
-        super().setUp()
-        self.data = self.tmp / "daten"
-        self.data.mkdir(parents=True, exist_ok=True)
-
-    def test_gate_konsole_richtig_und_falsch(self):
+    def test_richtiges_passwort(self):
         from angel import __main__ as m
         with mock.patch("getpass.getpass", lambda *a, **k: PW):
-            self.assertTrue(m._gate_konsole(self.data, sicherheit))
-        data2 = self.tmp / "daten2"
-        data2.mkdir()
+            self.assertEqual(m._passwort_pruefen(), 0)
+
+    def test_falsches_passwort(self):
+        from angel import __main__ as m
         with mock.patch("getpass.getpass", lambda *a, **k: "falsch"):
-            self.assertFalse(m._gate_konsole(data2, sicherheit))
+            self.assertEqual(m._passwort_pruefen(), 1)
 
-    def test_google_anmelden_ohne_passwort_blockiert(self):
+    def test_main_passwort_pruefen_flag(self):
         from angel import __main__ as m
-        aufgerufen = {"login": False}
-
-        def fake_login(cfg):
-            aufgerufen["login"] = True
-            return 0
-
-        with mock.patch.dict(os.environ, {"ANGEL_DATEN": str(self.data)}, clear=False), \
-             mock.patch.object(m, "_google_login", fake_login), \
-             mock.patch("getpass.getpass", lambda *a, **k: "falsch"):
-            rc = m.main(["--google-anmelden"])
-        self.assertEqual(rc, 0)
-        self.assertFalse(aufgerufen["login"])  # ohne richtiges Passwort KEINE Google-Anmeldung
-
-    def test_google_anmelden_mit_passwort_laeuft(self):
-        from angel import __main__ as m
-        aufgerufen = {"login": False}
-
-        def fake_login(cfg):
-            aufgerufen["login"] = True
-            return 0
-
-        with mock.patch.dict(os.environ, {"ANGEL_DATEN": str(self.data)}, clear=False), \
-             mock.patch.object(m, "_google_login", fake_login), \
-             mock.patch("getpass.getpass", lambda *a, **k: PW):
-            rc = m.main(["--google-anmelden"])
-        self.assertEqual(rc, 0)
-        self.assertTrue(aufgerufen["login"])  # richtiges Passwort -> Anmeldung läuft
-
-    def test_autostart_laeuft_ohne_passwort(self):
-        # --autostart darf NICHT nach Passwort fragen (sonst blockiert der Installer)
-        from angel import __main__ as m
-
-        def platzen(*a, **k):
-            raise AssertionError("getpass darf bei --autostart nicht aufgerufen werden")
-
-        with mock.patch.dict(os.environ, {"ANGEL_DATEN": str(self.data)}, clear=False), \
-             mock.patch("getpass.getpass", platzen):
-            rc = m.main(["--autostart", "status"])
-        self.assertEqual(rc, 0)
+        with mock.patch("getpass.getpass", lambda *a, **k: PW):
+            self.assertEqual(m.main(["--passwort-pruefen"]), 0)
+        with mock.patch("getpass.getpass", lambda *a, **k: "nein"):
+            self.assertEqual(m.main(["--passwort-pruefen"]), 1)
 
 
 if __name__ == "__main__":

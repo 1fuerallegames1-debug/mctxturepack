@@ -30,6 +30,30 @@ if not defined ANGEL_PY (
 )
 echo [1/5] Python: OK
 
+rem ---------- Passwort: ohne das richtige Passwort wird Angel NICHT eingerichtet ----------
+echo.
+echo Bitte das Angel-Passwort eingeben (nur fuer die Installation noetig).
+%ANGEL_PY% -m angel --passwort-pruefen
+if errorlevel 1 (
+  echo.
+  echo Installation abgebrochen.
+  pause
+  exit /b 1
+)
+
+rem ---------- Browser und Medien-Ordner abfragen ----------
+echo.
+echo Welchen Browser benutzt du? (Angel oeffnet damit Bilder/Videos/Seiten)
+set "ANGEL_BROWSER="
+set /p "ANGEL_BROWSER=  opera gx / firefox / edge / chrome / standard  [opera gx]: "
+if not defined ANGEL_BROWSER set "ANGEL_BROWSER=opera gx"
+%ANGEL_PY% -m angel --einstellung web_browser "%ANGEL_BROWSER%"
+echo.
+echo Wohin sollen gespeicherte Bilder/Videos? (voller Pfad, z.B. D:\Medien)
+set "ANGEL_MEDIEN="
+set /p "ANGEL_MEDIEN=  Ordner (leer = Standard unter Bilder\Angel-Medien): "
+if defined ANGEL_MEDIEN %ANGEL_PY% -m angel --einstellung medien_ordner "%ANGEL_MEDIEN%"
+
 rem ---------- Ollama finden, sonst per winget installieren ----------
 call :find_ollama
 if not defined ANGEL_OLLAMA (
@@ -73,12 +97,14 @@ echo [5/5] Automatischer Start wird eingerichtet ...
 
 echo.
 echo ============================================
-echo    Fertig! Angel startet jetzt.
+echo    Fertig! Angel startet jetzt (ohne schwarzes Fenster).
 echo    Spaeter: start.bat  -  Autostart aus: autostart-aus.bat
 echo ============================================
 echo.
-%ANGEL_PY% -m angel
-if errorlevel 1 pause
+rem Angel fensterlos und losgeloest starten, damit KEIN schwarzes Fenster offen bleibt
+where pyw >nul 2>nul && ( start "" pyw -3 -m angel & exit /b 0 )
+where pythonw >nul 2>nul && ( start "" pythonw -m angel & exit /b 0 )
+start "" %ANGEL_PY% -m angel
 exit /b 0
 
 :find_py

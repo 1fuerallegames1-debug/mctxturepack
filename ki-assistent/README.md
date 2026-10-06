@@ -99,25 +99,18 @@ kannst dann die Tastatur-Diktierfunktion deines Systems nutzen (Windows: **Win+H
 
 ---
 
-## Passwort beim Start
+## Passwort bei der Installation
 
-Gleich beim **ersten Start** – und bei jedem weiteren – verlangt Angel ein **Passwort**. Solange es
-nicht stimmt, tut Angel **gar nichts** (kein Chat, keine Werkzeuge).
+Beim **Installieren** (`installieren.bat`) fragt Angel nach einem **Passwort**. Ohne das richtige Passwort
+lässt sich Angel **nicht einrichten** – so kann niemand Angel aufsetzen, der das Passwort nicht kennt
+(praktisch, wenn du Angel an Freunde weitergibst).
 
-- Du hast **fünf Versuche**. Spätestens der fünfte muss richtig sein.
-- Nach dem fünften falschen Passwort **zerstört Angel sich selbst**: Angel löscht seine **eigenen
-  Daten** (Gedächtnis, gespeicherte Google-/Discord-Zugänge, Browser-Logins) und **sperrt sich
-  dauerhaft**. Danach kann niemand Fremdes Angel oder deine verbundenen Konten mehr benutzen; um Angel
-  wieder zu nutzen, musst du es neu installieren.
-- Dabei wird **ausschließlich Angels eigener Ordner** angefasst. Deine übrigen Dateien, Programme und
-  Windows-Einstellungen bleiben unberührt – ein versehentlicher Fehlversuch kann also nie deine eigenen
-  Sachen vernichten.
+- Beim **normalen Start danach wird NICHT mehr nach dem Passwort gefragt** – Angel öffnet sich direkt.
+- Das Passwort steht **nirgends im Klartext**. Gespeichert ist nur ein gesalzener Prüfwert (PBKDF2-Hash)
+  in `angel/sicherheit.py`. Passwort ändern? Sag mir Bescheid.
 
-Das Passwort steht **nirgends im Klartext**. Gespeichert ist nur ein gesalzener Prüfwert (PBKDF2-Hash)
-in `angel/sicherheit.py`; daraus lässt sich das Passwort praktisch nicht zurückrechnen. Die Datei
-gehört zum geschützten Programmkern – Angel selbst darf sie nicht verändern.
-
-> Passwort ändern? Sag mir Bescheid, dann baue ich dir deinen neuen Prüfwert ein.
+> Einzelne Chats mit Passwort sperren und Chats verschlüsselt speichern kommt im nächsten Schritt
+> (zusammen mit dem Chat-Verlauf links im Fenster).
 
 ---
 
@@ -202,6 +195,32 @@ kannst natürlich auch sagen „merk dir, dass …" oder „vergiss Nr. 3".
   Angel per Stichwort-Suche wieder.
 - Passwörter und Geheimnisse merkt Angel sich bewusst **nicht**. Abschalten: in `config.json` unter
   `lernen` → `aktiv` auf `false` (dann merkt sich Angel nur noch, was du ausdrücklich sagst).
+
+---
+
+## Bilder & Videos aus dem Web (zeigen & speichern)
+
+- „**Zeig/such mir ein Bild von X**" → Angel findet ein **echtes** Bild und öffnet es in deinem Browser
+  (keine erfundenen Links mehr). „**Mehrere**" → Angel listet mehrere echte Treffer.
+- „**Öffne … im Browser**" / „**such ein Video von X**" → Angel öffnet die Seite bzw. eine Suche im Browser.
+- „**Speicher dieses Bild/Video**" → Angel lädt es in deinen **Medien-Ordner** (bei der Installation
+  gefragt; Standard: `Bilder\Angel-Medien`). Du kannst auch einen Pfad mitgeben.
+
+**Browser:** Welchen Browser Angel benutzt, wird **bei der Installation** gefragt (Opera GX, Firefox, Edge,
+Chrome oder Standardbrowser). Später änderbar in `config.json` unter `web_browser`.
+
+---
+
+## Programmieren
+
+Angel kann für dich **programmieren** – schreiben, ausführen und Fehler suchen. Standardmäßig
+**Python** und **Java** (weitere Sprachen jederzeit ergänzbar unter `programmiersprachen` in `config.json`):
+
+- **Python** läuft direkt.
+- **Java**: Angel schreibt die `.java`-Datei, kompiliert mit `javac` und startet mit `java`. Fehlt das
+  JDK, richtet Angel es auf Wunsch ein (`winget install -e --id Microsoft.OpenJDK.21`).
+
+Sag einfach z. B. „schreib mir ein Python-Skript, das …" oder „mach mir ein kleines Java-Programm für …".
 
 ---
 

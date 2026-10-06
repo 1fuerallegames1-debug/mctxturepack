@@ -26,6 +26,9 @@
   "sprachsteuerung": { "aktiv": true, "automatisch_senden": false },
   "google": { "aktiv": false, "client_id": "", "client_secret": "" },
   "browser": { "aktiv": false, "sichtbar": true },
+  "web_browser": "opera gx",
+  "medien_ordner": "D:\\FAG Angel\\Gespeicherter Stuff\\Medien",
+  "programmiersprachen": ["Python", "Java"],
 
   "zusatz_anweisungen": "",
 
