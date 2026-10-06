@@ -6,11 +6,11 @@
   "geschlecht": "weiblich",
 
   "anbieter": "ollama",
-  "modell": "qwen3:8b",
+  "modell": "hermes3:8b",
   "server_url": "http://127.0.0.1:11434",
   "kontext_laenge": 16384,
   "temperatur": 0.6,
-  "denken": false,
+  "denken": null,
   "denken_anzeigen": false,
   "im_speicher_halten": "30m",
 

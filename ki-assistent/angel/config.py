@@ -22,17 +22,17 @@ DEFAULTS = {
     # Woher kommt das KI-Modell? "ollama" (empfohlen) oder "openai"
     # (= jeder OpenAI-kompatible lokale Server, z. B. LM Studio oder llama.cpp)
     "anbieter": "ollama",
-    "modell": "qwen3:8b",
+    "modell": "hermes3:8b",
     "server_url": "http://127.0.0.1:11434",
     "api_schluessel": "",
     # Wie viele Tokens das Modell auf einmal "im Kopf" behält.
     # Mehr = besseres Gedächtnis im Gespräch, braucht aber mehr (Grafik-)Speicher.
     "kontext_laenge": 16384,
     "temperatur": 0.6,
-    # Nachdenken (Reasoning): false = direkt antworten (SCHNELL, empfohlen), true = erst lange grübeln
-    # (langsamer, bei kniffligen Aufgaben manchmal etwas besser), null = Modell entscheidet selbst.
-    # Hinweis: Modelle OHNE Denk-Funktion vertragen hier am besten null.
-    "denken": False,
+    # Nachdenken (Reasoning): null = aus/Modell-Standard. Das Standardmodell hermes3 denkt nicht lange
+    # vor -> von Haus aus schnelle Antworten (hier bitte null lassen). Nur bei einem DENK-Modell wie
+    # qwen3 kannst du true (klüger, langsamer) oder false (schneller) setzen.
+    "denken": None,
     "denken_anzeigen": False,
     # KI-Modell nach der letzten Nutzung so lange im (Grafik-)Speicher halten – dann startet die nächste
     # Antwort ohne Ladezeit. "30m" = 30 Minuten, "-1" = dauerhaft, "0" = sofort entladen.

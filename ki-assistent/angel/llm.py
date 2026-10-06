@@ -87,7 +87,7 @@ def _explain_http_error(code: int, message: str, url: str) -> str:
     if "does not support tools" in low:
         return (
             f"Das Modell unterstützt keine Werkzeuge (Tool-Calling): {message}\n"
-            "Nötig ist ein Modell mit Werkzeug-Unterstützung, z. B. qwen3:8b, qwen3.5 oder gemma4.\n"
+            "Nötig ist ein Modell mit Werkzeug-Unterstützung, z. B. hermes3:8b, qwen3:8b oder gemma4.\n"
             "Liste: https://ollama.com/search?c=tools"
         )
     if code == 404 and ("not found" in low or "model" in low):
@@ -379,7 +379,7 @@ class OllamaClient(BaseClient):
                 if isinstance(caps, list) and "tools" not in caps:
                     info["warning"] = (
                         f"Achtung: '{self.model}' unterstützt laut Ollama keine Werkzeuge. "
-                        "Damit ist nur Chatten möglich, aber keine Aktionen am PC. Empfohlen: qwen3:8b, qwen3.5 oder gemma4."
+                        "Damit ist nur Chatten möglich, aber keine Aktionen am PC. Empfohlen: hermes3:8b, qwen3:8b oder gemma4."
                     )
             except LLMError:
                 pass

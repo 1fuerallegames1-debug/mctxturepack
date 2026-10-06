@@ -21,7 +21,7 @@ Befehle:
   /hilfe              diese Hilfe
   /neu                neues Gespräch beginnen (Gedächtnis bleibt)
   /modelle            installierte Modelle anzeigen
-  /modell <name>      anderes Modell verwenden (z. B. /modell qwen3:8b)
+  /modell <name>      anderes Modell verwenden (z. B. /modell hermes3:8b)
   /gedaechtnis        anzeigen, was sich {name} gemerkt hat
   /vergiss <nr>       einen gemerkten Eintrag löschen
   /auto an|aus        Aktionen ohne Nachfrage ausführen (Vorsicht!) / wieder nachfragen

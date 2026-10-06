@@ -53,11 +53,11 @@ rem ---------- KI-Modell laden ----------
 echo [3/5] KI-Modell wird geladen (einmalig, mehrere GB, bitte warten) ...
 rem dem gerade gestarteten Ollama-Dienst ein paar Sekunden Zeit geben
 timeout /t 5 /nobreak >nul 2>nul
-"%ANGEL_OLLAMA%" pull qwen3:8b
+"%ANGEL_OLLAMA%" pull hermes3:8b
 if errorlevel 1 (
   echo Server war noch nicht bereit - neuer Versuch fuer das KI-Modell ...
   timeout /t 8 /nobreak >nul 2>nul
-  "%ANGEL_OLLAMA%" pull qwen3:8b
+  "%ANGEL_OLLAMA%" pull hermes3:8b
 )
 echo     ... und das Seh-Modell fuer Bilder/Videos (llava) ...
 "%ANGEL_OLLAMA%" pull llava

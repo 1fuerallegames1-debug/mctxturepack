@@ -16,7 +16,7 @@ def main(argv=None) -> int:
     parser = argparse.ArgumentParser(prog="angel", description="Angel – deine eigene KI auf deinem PC")
     parser.add_argument("--terminal", "--text", dest="terminal", action="store_true",
                         help="im schwarzen Textfenster statt im eigenen Fenster starten")
-    parser.add_argument("--modell", "--model", dest="modell", help="KI-Modell für diese Sitzung (z. B. qwen3:8b)")
+    parser.add_argument("--modell", "--model", dest="modell", help="KI-Modell für diese Sitzung (z. B. hermes3:8b)")
     parser.add_argument("--google-anmelden", dest="google_login", action="store_true",
                         help="einmalig bei Google anmelden (öffnet den Browser)")
     parser.add_argument("--autostart", choices=["ein", "aus", "status"],

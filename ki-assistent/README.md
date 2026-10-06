@@ -328,23 +328,25 @@ steuert den Virenschutz.
 
 Wie viel Grafikspeicher (VRAM) du hast, zeigt der Task-Manager → Leistung → GPU.
 
+Das **Standardmodell ist `hermes3:8b`** – ein „freies", neutral ausgerichtetes Modell: es lehnt bei
+normalen Aufgaben kaum etwas grundlos ab und denkt nicht lange vor (also schnell). Es versteht Deutsch und
+Englisch und kann Werkzeuge.
+
 | Grafikkarte | Empfohlenes Modell | Herunterladen mit |
 |---|---|---|
-| keine / unter 6 GB | `qwen3:4b` (läuft auch auf dem Prozessor, langsamer) | `ollama pull qwen3:4b` |
-| 8 GB | `qwen3:8b` (**Standard**) | `ollama pull qwen3:8b` |
-| 12 GB | `qwen3.5` | `ollama pull qwen3.5` |
-| 16 GB und mehr | `gemma4` | `ollama pull gemma4` |
+| keine / unter 6 GB | `hermes3:3b` (freier & sehr schnell) | `ollama pull hermes3:3b` |
+| 8 GB | `hermes3:8b` (**Standard** – freier, schnell) | `ollama pull hermes3:8b` |
+| 12 GB und mehr | `hermes3:8b` oder `qwen3:8b` (etwas klüger, langsamer) | `ollama pull qwen3:8b` |
 
-Modell wechseln: in Angel `/modell gemma4` (im Textfenster) oder `"modell"` in `config.json` ändern.
-Alle genannten Modelle können Deutsch und Englisch. **Wichtig:** Das Modell muss **Werkzeuge (Tools)**
-unterstützen – Liste: <https://ollama.com/search?c=tools>.
+Modell wechseln: in Angel `/modell hermes3:3b` (im Textfenster) oder `"modell"` in `config.json` ändern.
+**Wichtig:** Das Modell muss **Werkzeuge (Tools)** unterstützen – Liste: <https://ollama.com/search?c=tools>.
 
 ### Wenn Angel zu langsam ist
 
-- **Nachdenken ausschalten** (standardmäßig schon aus): im Textfenster `/denken aus`, oder in `config.json`
-  `"denken": false`. Das spart am meisten Zeit – das Modell antwortet direkt, statt lange vorzudenken. Für
-  eine besonders knifflige Aufgabe schaltest du es mit `/denken an` kurz wieder ein.
-- **Kleineres Modell**: z. B. `/modell qwen3:4b` (schneller) oder `/modell llama3.2:3b` (am schnellsten).
+- **Noch schneller = kleineres Modell**: `/modell hermes3:3b` ist spürbar flinker (etwas einfacher bei sehr
+  komplizierten Aufgaben). Zurück zu mehr Klugheit: `/modell hermes3:8b` oder `/modell qwen3:8b`.
+- **Denk-Modell?** Nur falls du ein Modell wie `qwen3` nutzt: `/denken aus` macht es schneller, `/denken an`
+  klüger. `hermes3` denkt ohnehin nicht lange vor – da ist nichts umzustellen.
 - **Modell im Speicher halten**: Angel lässt das Modell nach der Nutzung 30 Min. geladen, damit die nächste
   Antwort ohne Ladezeit kommt (`"im_speicher_halten"` in `config.json`; `"-1"` = dauerhaft geladen).
 - Am meisten bringt eine **Grafikkarte mit genug Speicher** – auf dem reinen Prozessor bleibt es zäh.
@@ -361,7 +363,7 @@ Pfaden `\` doppelt schreiben (`"D:\\Server"`) oder `/` verwenden.
 | `name`, `dein_name` | Name der KI / dein Name | `"Angel"` / `""` |
 | `sprache` | `"Deutsch und Englisch"` (antwortet in deiner Sprache) oder fest z. B. `"Deutsch"` | beide |
 | `geschlecht` | wie die KI von sich spricht: `"weiblich"`, `"männlich"`, `"neutral"` | `"weiblich"` |
-| `modell` | KI-Modell | `"qwen3:8b"` |
+| `modell` | KI-Modell | `"hermes3:8b"` |
 | `kontext_laenge` | Gesprächs-Gedächtnis in Tokens (mehr = besser, braucht mehr Speicher) | `16384` |
 | `bestaetigung` | `"nachfragen"` oder `"automatisch"` (siehe Sicherheit) | `"nachfragen"` |
 | `oberflaeche` | `"fenster"` (PC-Programm) oder `"terminal"` | `"fenster"` |
