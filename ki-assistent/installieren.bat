@@ -88,7 +88,7 @@ echo     ... und das Seh-Modell fuer Bilder/Videos (llava) ...
 
 rem ---------- Sprache + Browser (Fehler hier sind nicht schlimm) ----------
 echo [4/5] Sprache und Browser werden eingerichtet ...
-%ANGEL_PY% -m pip install --disable-pip-version-check --quiet --upgrade vosk sounddevice playwright
+%ANGEL_PY% -m pip install --disable-pip-version-check --quiet --upgrade vosk sounddevice playwright cryptography
 %ANGEL_PY% -m playwright install chromium
 
 rem ---------- Automatischer Start ----------

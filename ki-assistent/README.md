@@ -109,8 +109,18 @@ lässt sich Angel **nicht einrichten** – so kann niemand Angel aufsetzen, der 
 - Das Passwort steht **nirgends im Klartext**. Gespeichert ist nur ein gesalzener Prüfwert (PBKDF2-Hash)
   in `angel/sicherheit.py`. Passwort ändern? Sag mir Bescheid.
 
-> Einzelne Chats mit Passwort sperren und Chats verschlüsselt speichern kommt im nächsten Schritt
-> (zusammen mit dem Chat-Verlauf links im Fenster).
+---
+
+## Chat-Verlauf & Verschlüsselung
+
+Links im Fenster ist deine **Chat-Verlauf-Leiste**: alle gespeicherten Gespräche (neueste oben), oben ein
+**„＋ Neuer Chat"**. Ein Klick öffnet einen alten Chat, Rechtsklick bietet **Öffnen / Sperren / Löschen**.
+
+- **Verschlüsselt gespeichert:** Jedes Gespräch liegt verschlüsselt in `daten/gespraeche/` (AES über die
+  Bibliothek `cryptography`, die der Installer mitinstalliert). Im Klartext steht dort nichts.
+- **Einzelne Chats sperren:** „🔒 Diesen Chat sperren" (oder Rechtsklick → Sperren) schützt einen Chat mit
+  einem **eigenen Passwort**. Zum Öffnen musst du es eingeben; das Passwort wird nicht gespeichert – ohne
+  es ist der Chat nicht lesbar.
 
 ---
 

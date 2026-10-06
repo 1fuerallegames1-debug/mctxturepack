@@ -152,8 +152,8 @@ def run_gui(agent) -> int:
     root = tk.Tk()
     root.title(name)
     root.configure(bg=BG)
-    root.geometry("760x640")
-    root.minsize(420, 400)
+    root.geometry("700x660")
+    root.minsize(540, 420)
     try:
         from . import icons
         icon_path = agent.ctx.data_dir / "angel-icon.png"
@@ -170,8 +170,25 @@ def run_gui(agent) -> int:
     title_font = base.copy()
     title_font.configure(size=15, weight="bold")
 
+    # Grundlayout: links die Chat-Verlauf-Leiste, rechts das aktuelle Gespräch
+    body = tk.Frame(root, bg=BG)
+    body.pack(fill="both", expand=True)
+    sidebar = tk.Frame(body, bg=PANEL, width=190)
+    sidebar.pack(side="left", fill="y")
+    sidebar.pack_propagate(False)
+    tk.Label(sidebar, text="CHATS", bg=PANEL, fg=MUTED, font=mono, anchor="w").pack(fill="x", padx=12, pady=(12, 4))
+    tk.Button(sidebar, text="＋ Neuer Chat", command=lambda: new_chat(), bg=ACCENT2, fg="#06131a",
+              relief="flat", bd=0, font=bold, cursor="hand2").pack(fill="x", padx=10, pady=(0, 6))
+    tk.Button(sidebar, text="🔒 Diesen Chat sperren", command=lambda: sperre_aktuellen(), bg=PANEL, fg=MUTED,
+              relief="flat", bd=0, font=mono, cursor="hand2", activebackground=PANEL,
+              activeforeground=ACCENT).pack(fill="x", padx=10, pady=(0, 8))
+    chatliste = tk.Frame(sidebar, bg=PANEL)
+    chatliste.pack(fill="both", expand=True)
+    main = tk.Frame(body, bg=BG)
+    main.pack(side="left", fill="both", expand=True)
+
     # Kopfzeile mit Neon-Glow-Linie
-    head = tk.Frame(root, bg=PANEL)
+    head = tk.Frame(main, bg=PANEL)
     head.pack(fill="x")
     tk.Label(head, text="⬡", bg=PANEL, fg=ACCENT, font=title_font).pack(side="left", padx=(12, 3), pady=(10, 8))
     tk.Label(head, text=name, bg=PANEL, fg=TEXT, font=title_font).pack(side="left", pady=(10, 8))
@@ -183,10 +200,10 @@ def run_gui(agent) -> int:
     tk.Button(head, text="＋ Neu", command=lambda: new_chat(), bg=PANEL, fg=ACCENT, font=mono,
               relief="flat", bd=0, activebackground=PANEL, activeforeground=ACCENT2,
               cursor="hand2").pack(side="right", padx=12)
-    tk.Frame(root, bg=ACCENT, height=2).pack(fill="x")  # leuchtende Trennlinie
+    tk.Frame(main, bg=ACCENT, height=2).pack(fill="x")  # leuchtende Trennlinie
 
     # Chatbereich
-    wrap = tk.Frame(root, bg=BG)
+    wrap = tk.Frame(main, bg=BG)
     wrap.pack(fill="both", expand=True)
     chat = tk.Text(wrap, bg=BG, fg=TEXT, wrap="word", relief="flat", padx=12, pady=10,
                    insertbackground=TEXT, font=base, state="disabled", cursor="arrow")
@@ -205,11 +222,11 @@ def run_gui(agent) -> int:
     chat.tag_configure("reminder", foreground=WARN, background="#1d1704", font=bold, spacing1=8, spacing3=6)
 
     # Transkript-Zeile (zeigt, was per Sprache verstanden wurde)
-    heard = tk.Label(root, text="", bg=BG, fg=ACCENT, anchor="w", font=mono)
+    heard = tk.Label(main, text="", bg=BG, fg=ACCENT, anchor="w", font=mono)
     heard.pack(fill="x", padx=14)
 
     # Eingabezeile mit leuchtendem Rahmen (wird bei Fokus cyan)
-    foot = tk.Frame(root, bg=PANEL)
+    foot = tk.Frame(main, bg=PANEL)
     foot.pack(fill="x")
     entry = tk.Text(foot, height=2, bg=FIELD, fg=TEXT, insertbackground=ACCENT, relief="flat",
                     wrap="word", font=base, padx=10, pady=7,
@@ -230,11 +247,16 @@ def run_gui(agent) -> int:
                          font=bold, activebackground=ACCENT2, activeforeground="#06131a", cursor="hand2")
     send_btn.pack(side="right", padx=(6, 12), pady=10)
 
-    hint = tk.Label(root, text="  Enter = senden   ·   Umschalt+Enter = neue Zeile   ·   kritische Aktionen "
+    hint = tk.Label(main, text="  Enter = senden   ·   Umschalt+Enter = neue Zeile   ·   kritische Aktionen "
                                "werden bestätigt", bg=PANEL, fg=MUTED, anchor="w", font=mono)
     hint.pack(fill="x", ipady=3)
 
     state = {"busy": False, "stream": False, "approvals": {}}
+
+    # Gespeicherte, verschlüsselte Gespräche (Chat-Verlauf links)
+    from . import gespraeche as gp
+    gespr = gp.Gespraeche(agent.ctx.data_dir)
+    aktueller = {"id": gespr.neu(), "key": gespr.lokaler_key()}
 
     # ---- Chat-Ausgabe
     def write(text, tag=None, newline=True):
@@ -249,12 +271,12 @@ def run_gui(agent) -> int:
                        highlightbackground=(ERRC if ev.get("dangerous") else WARN), highlightthickness=1)
         title = f"⚠ {name} möchte etwas Kritisches tun:" if ev.get("dangerous") else f"{name} möchte Folgendes tun:"
         tk.Label(box, text=title, bg=box["bg"], fg=TEXT, font=bold, anchor="w", justify="left",
-                 wraplength=560).pack(fill="x", padx=10, pady=(8, 2))
+                 wraplength=420).pack(fill="x", padx=10, pady=(8, 2))
         tk.Label(box, text=ev.get("summary", ""), bg=box["bg"], fg=TEXT, font=mono, anchor="w",
-                 justify="left", wraplength=560).pack(fill="x", padx=10)
+                 justify="left", wraplength=420).pack(fill="x", padx=10)
         if ev.get("warning"):
             tk.Label(box, text=ev["warning"], bg=box["bg"], fg=ERRC, anchor="w", justify="left",
-                     wraplength=560).pack(fill="x", padx=10, pady=(4, 0))
+                     wraplength=420).pack(fill="x", padx=10, pady=(4, 0))
         btns = tk.Frame(box, bg=box["bg"])
         btns.pack(fill="x", padx=10, pady=8)
         aid = ev["approval_id"]
@@ -339,6 +361,8 @@ def run_gui(agent) -> int:
         elif t == "end":
             state["stream"] = False
             set_busy(False)
+            _speichere_aktuellen()  # Chat-Verlauf verschlüsselt sichern
+            refresh_sidebar()
 
     def set_busy(b):
         state["busy"] = b
@@ -365,16 +389,157 @@ def run_gui(agent) -> int:
             write("Angel arbeitet gerade – einen Moment, dann nochmal senden.", "info")
         return "break"
 
-    def new_chat():
-        if controller.running():  # verbindlicher Lock-Zustand (auch bei Hintergrund-Aufgaben korrekt)
-            write("Bitte zuerst die laufende Aufgabe stoppen.", "info")
-            return
-        agent.reset()
+    def _leere_chatanzeige():
         chat.configure(state="normal")
         chat.delete("1.0", "end")
         chat.configure(state="disabled")
         state["approvals"].clear()
+        state["stream"] = False
+
+    def _speichere_aktuellen():
+        if agent.history:
+            try:
+                gespr.speichern(aktueller["id"], agent.history, aktueller["key"])
+            except Exception:
+                pass
+
+    def render_verlauf(msgs):
+        _leere_chatanzeige()
+        hatte = False
+        for m in msgs:
+            rolle, inhalt = m.get("role"), (m.get("content") or "").strip()
+            if rolle == "user" and inhalt:
+                write("Du: " + inhalt, "user")
+                hatte = True
+            elif rolle == "assistant" and inhalt:
+                write(f"{name}:", "name")
+                write(inhalt, "assistant")
+                hatte = True
+        if not hatte:
+            show_welcome()
+
+    def refresh_sidebar():
+        for w in chatliste.winfo_children():
+            w.destroy()
+        for e in gespr.liste()[:30]:
+            cid, titel = e.get("id"), (e.get("titel") or "Chat")
+            text = ("🔒 " if e.get("gesperrt") else "") + titel
+            aktiv = (cid == aktueller["id"])
+            lbl = tk.Label(chatliste, text=text, bg=(USER if aktiv else PANEL),
+                           fg=(TEXT if aktiv else MUTED), anchor="w", font=mono, padx=10, pady=5,
+                           cursor="hand2", wraplength=166, justify="left")
+            lbl.pack(fill="x", padx=6, pady=1)
+            lbl.bind("<Button-1>", lambda ev, i=cid: lade_chat(i))
+            lbl.bind("<Button-3>", lambda ev, i=cid: _chat_menu(i, ev))
+
+    def _chat_menu(cid, ev):
+        m = tk.Menu(root, tearoff=0)
+        m.add_command(label="Öffnen", command=lambda: lade_chat(cid))
+        if gespr.ist_gesperrt(cid):
+            m.add_command(label="Entsperren…", command=lambda: entsperre_dauerhaft(cid))
+        else:
+            m.add_command(label="Mit Passwort sperren…", command=lambda: sperre_chat(cid))
+        m.add_separator()
+        m.add_command(label="Löschen", command=lambda: loesche_chat(cid))
+        try:
+            m.tk_popup(ev.x_root, ev.y_root)
+        finally:
+            m.grab_release()
+
+    def lade_chat(cid):
+        if controller.running():
+            write("Bitte zuerst die laufende Aufgabe stoppen.", "info")
+            return
+        if cid == aktueller["id"]:
+            return
+        from tkinter import messagebox, simpledialog
+        _speichere_aktuellen()
+        key = gespr.lokaler_key()
+        if gespr.ist_gesperrt(cid):
+            pw = simpledialog.askstring("Chat gesperrt", "Passwort für diesen Chat:", show="*", parent=root)
+            if not pw:
+                return
+            try:
+                key = gespr.entsperren_key(cid, pw)
+            except gp.GespraechFehler as e:
+                messagebox.showerror("Gesperrt", str(e), parent=root)
+                return
+        try:
+            msgs = gespr.laden(cid, key)
+        except gp.GespraechFehler as e:
+            messagebox.showerror("Fehler", str(e), parent=root)
+            return
+        agent.reset()
+        agent.history = list(msgs)
+        aktueller["id"], aktueller["key"] = cid, key
+        render_verlauf(msgs)
+        refresh_sidebar()
+
+    def new_chat():
+        if controller.running():
+            write("Bitte zuerst die laufende Aufgabe stoppen.", "info")
+            return
+        _speichere_aktuellen()
+        agent.reset()
+        aktueller["id"], aktueller["key"] = gespr.neu(), gespr.lokaler_key()
+        _leere_chatanzeige()
         show_welcome()
+        refresh_sidebar()
+
+    def sperre_chat(cid):
+        from tkinter import messagebox, simpledialog
+        if not gp.verschluesselung_verfuegbar():
+            messagebox.showinfo("Nicht verfügbar", "Die Verschlüsselung ist nicht installiert.", parent=root)
+            return
+        pw = simpledialog.askstring("Chat sperren", "Neues Passwort für diesen Chat:", show="*", parent=root)
+        if not pw:
+            return
+        if simpledialog.askstring("Chat sperren", "Passwort wiederholen:", show="*", parent=root) != pw:
+            messagebox.showerror("Sperren", "Die Passwörter stimmen nicht überein.", parent=root)
+            return
+        lese_key = aktueller["key"] if cid == aktueller["id"] else gespr.lokaler_key()
+        try:
+            neuer_key = gespr.sperren(cid, pw, lese_key)
+        except gp.GespraechFehler as e:
+            messagebox.showerror("Sperren", str(e), parent=root)
+            return
+        if cid == aktueller["id"]:
+            aktueller["key"] = neuer_key
+        refresh_sidebar()
+        messagebox.showinfo("Gesperrt", "Dieser Chat ist jetzt mit Passwort geschützt.", parent=root)
+
+    def sperre_aktuellen():
+        from tkinter import messagebox
+        if not agent.history:
+            messagebox.showinfo("Sperren", "Dieser Chat ist noch leer – schreib erst etwas.", parent=root)
+            return
+        _speichere_aktuellen()
+        sperre_chat(aktueller["id"])
+
+    def entsperre_dauerhaft(cid):
+        from tkinter import messagebox, simpledialog
+        pw = simpledialog.askstring("Entsperren", "Passwort des Chats:", show="*", parent=root)
+        if not pw:
+            return
+        try:
+            key = gespr.entsperren_key(cid, pw)
+            gespr.entsperren(cid, key)
+        except gp.GespraechFehler as e:
+            messagebox.showerror("Entsperren", str(e), parent=root)
+            return
+        if cid == aktueller["id"]:
+            aktueller["key"] = gespr.lokaler_key()
+        refresh_sidebar()
+
+    def loesche_chat(cid):
+        from tkinter import messagebox
+        if not messagebox.askyesno("Löschen", "Diesen Chat wirklich löschen?", parent=root):
+            return
+        gespr.loeschen(cid)
+        if cid == aktueller["id"]:
+            new_chat()
+        else:
+            refresh_sidebar()
 
     send_btn.configure(command=do_send)
     entry.bind("<Return>", do_send)
@@ -471,6 +636,7 @@ def run_gui(agent) -> int:
                   "(z. B. PC-Einstellungen ändern, Discord-Ban/Kick) immer.", "info")
 
     show_welcome()
+    refresh_sidebar()
     entry.focus_set()
 
     # Terminplaner: prüft im Hintergrund, was fällig ist. Erinnerungen werden angezeigt,
