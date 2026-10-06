@@ -339,6 +339,16 @@ Modell wechseln: in Angel `/modell gemma4` (im Textfenster) oder `"modell"` in `
 Alle genannten Modelle können Deutsch und Englisch. **Wichtig:** Das Modell muss **Werkzeuge (Tools)**
 unterstützen – Liste: <https://ollama.com/search?c=tools>.
 
+### Wenn Angel zu langsam ist
+
+- **Nachdenken ausschalten** (standardmäßig schon aus): im Textfenster `/denken aus`, oder in `config.json`
+  `"denken": false`. Das spart am meisten Zeit – das Modell antwortet direkt, statt lange vorzudenken. Für
+  eine besonders knifflige Aufgabe schaltest du es mit `/denken an` kurz wieder ein.
+- **Kleineres Modell**: z. B. `/modell qwen3:4b` (schneller) oder `/modell llama3.2:3b` (am schnellsten).
+- **Modell im Speicher halten**: Angel lässt das Modell nach der Nutzung 30 Min. geladen, damit die nächste
+  Antwort ohne Ladezeit kommt (`"im_speicher_halten"` in `config.json`; `"-1"` = dauerhaft geladen).
+- Am meisten bringt eine **Grafikkarte mit genug Speicher** – auf dem reinen Prozessor bleibt es zäh.
+
 ---
 
 ## Einstellungen (`config.json`)

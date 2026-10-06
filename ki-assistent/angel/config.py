@@ -29,9 +29,14 @@ DEFAULTS = {
     # Mehr = besseres Gedächtnis im Gespräch, braucht aber mehr (Grafik-)Speicher.
     "kontext_laenge": 16384,
     "temperatur": 0.6,
-    # null = Standard des Modells, true/false = Nachdenken (Reasoning) an/aus
-    "denken": None,
+    # Nachdenken (Reasoning): false = direkt antworten (SCHNELL, empfohlen), true = erst lange grübeln
+    # (langsamer, bei kniffligen Aufgaben manchmal etwas besser), null = Modell entscheidet selbst.
+    # Hinweis: Modelle OHNE Denk-Funktion vertragen hier am besten null.
+    "denken": False,
     "denken_anzeigen": False,
+    # KI-Modell nach der letzten Nutzung so lange im (Grafik-)Speicher halten – dann startet die nächste
+    # Antwort ohne Ladezeit. "30m" = 30 Minuten, "-1" = dauerhaft, "0" = sofort entladen.
+    "im_speicher_halten": "30m",
     # "nachfragen" = vor jeder Aktion am PC um Erlaubnis bitten (empfohlen)
     # "automatisch" = alles ohne Rückfrage ausführen (auf eigene Gefahr!)
     "bestaetigung": "nachfragen",

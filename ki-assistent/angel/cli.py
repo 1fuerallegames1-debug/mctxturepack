@@ -25,6 +25,7 @@ Befehle:
   /gedaechtnis        anzeigen, was sich {name} gemerkt hat
   /vergiss <nr>       einen gemerkten Eintrag löschen
   /auto an|aus        Aktionen ohne Nachfrage ausführen (Vorsicht!) / wieder nachfragen
+  /denken an|aus      langes Nachdenken an (klüger) / aus (schneller)
   /regeln             {name}s drei Grundregeln anzeigen
   /beenden            {name} beenden (oder Strg+C)
 Während {name} arbeitet, bricht Strg+C die aktuelle Aufgabe ab."""
@@ -284,6 +285,17 @@ class TerminalChat:
                 self.out(f"{s.green}{self.name} fragt wieder vor jeder Aktion nach.{s.reset}")
             else:
                 self.out(f"Automatik ist {'an' if agent.auto_mode else 'aus'}. Nutzung: /auto an  oder  /auto aus")
+        elif cmd in ("denken", "think"):
+            v = arg.lower()
+            if v in ("an", "on", "ein", "true"):
+                agent.cfg["denken"] = True
+                self.out("Nachdenken ist AN (etwas langsamer, bei kniffligen Aufgaben manchmal besser).")
+            elif v in ("aus", "off", "false"):
+                agent.cfg["denken"] = False
+                self.out("Nachdenken ist AUS – schnellere Antworten.")
+            else:
+                zustand = {True: "an", False: "aus", None: "Modell-Standard"}.get(agent.cfg.get("denken"), "?")
+                self.out(f"Nachdenken ist {zustand}. Nutzung: /denken an  oder  /denken aus")
         else:
             self.out(f"Unbekannter Befehl. {HELP.format(name=self.name)}")
         return None

@@ -10,8 +10,9 @@
   "server_url": "http://127.0.0.1:11434",
   "kontext_laenge": 16384,
   "temperatur": 0.6,
-  "denken": null,
+  "denken": false,
   "denken_anzeigen": false,
+  "im_speicher_halten": "30m",
 
   "bestaetigung": "nachfragen",
   "immer_erlauben": [],
